@@ -31,7 +31,9 @@ data class Ghost(
     var x: Int,
     var y: Int,
     val color: Color,
-    val type: GhostType
+    val type: GhostType,
+    var dirX: Int = 0,
+    var dirY: Int = 0
 )
 
 private fun lerp(start: Color, stop: Color, fraction: Float): Color {
@@ -59,6 +61,8 @@ fun PacmanGame() {
     var pacY by remember { mutableStateOf(rows / 2) }
     var dirX by remember { mutableStateOf(0) }
     var dirY by remember { mutableStateOf(0) }
+    var nextDirX by remember { mutableStateOf(0) }
+    var nextDirY by remember { mutableStateOf(0) }
 
     val ghosts = remember {
         mutableStateListOf(
@@ -118,6 +122,7 @@ fun PacmanGame() {
         resetMap()
         pacX = cols / 2; pacY = rows / 2
         dirX = 0; dirY = 0
+        nextDirX = 0; nextDirY = 0
 
         while (true) {
             if (gameOver) {
@@ -126,18 +131,36 @@ fun PacmanGame() {
                 resetMap()
                 pacX = cols / 2; pacY = rows / 2
                 dirX = 0; dirY = 0
-                ghosts[0].x = 1; ghosts[0].y = 1
-                ghosts[1].x = cols - 2; ghosts[1].y = 1
-                ghosts[2].x = 1; ghosts[2].y = rows - 2
+                nextDirX = 0; nextDirY = 0
+                ghosts.replaceAll {
+                    when(it.type) {
+                        GhostType.CHASER -> Ghost(1, 1, it.color, it.type)
+                        GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type)
+                        GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type)
+                    }
+                }
                 gameOver = false
             }
 
-            // --- Pac-Man grid movement ---
-            val nextX = pacX + dirX
-            val nextY = pacY + dirY
-            if (nextY in 0 until rows && nextX in 0 until cols && map[nextY][nextX] != 1) {
-                pacX = nextX
-                pacY = nextY
+            // --- Pac-Man movement ---
+            // Check if we can apply the new intended direction from user input
+            val tryNextX = pacX + nextDirX
+            val tryNextY = pacY + nextDirY
+            if (nextDirX != 0 || nextDirY != 0) {
+                 if (tryNextY in 0 until rows && tryNextX in 0 until cols && map[tryNextY][tryNextX] != 1) {
+                    dirX = nextDirX
+                    dirY = nextDirY
+                    nextDirX = 0
+                    nextDirY = 0
+                 }
+            }
+
+            // Move in the current direction if possible
+            val nextPacX = pacX + dirX
+            val nextPacY = pacY + dirY
+            if (nextPacY in 0 until rows && nextPacX in 0 until cols && map[nextPacY][nextPacX] != 1) {
+                pacX = nextPacX
+                pacY = nextPacY
             }
 
             // --- Dot collection ---
@@ -148,7 +171,7 @@ fun PacmanGame() {
 
             // --- Ghost movement ---
             ghosts.forEach { ghost ->
-                moveGhostGrid(map, ghost, pacX, pacY, ghosts)
+                moveGhostGrid(map, ghost, pacX, pacY, dirX, dirY, ghosts)
             }
 
             // --- Collision check ---
@@ -170,9 +193,13 @@ fun PacmanGame() {
                         val centerY = size.height / 2
                         val dx = offset.x - centerX
                         val dy = offset.y - centerY
-                        dirX = 0; dirY = 0
-                        if (abs(dx) > abs(dy)) dirX = if (dx > 0) 1 else -1
-                        else dirY = if (dy > 0) 1 else -1
+                        if (abs(dx) > abs(dy)) {
+                            nextDirX = if (dx > 0) 1 else -1
+                            nextDirY = 0
+                        } else {
+                            nextDirY = if (dy > 0) 1 else -1
+                            nextDirX = 0
+                        }
                     }
                 }
         ) {
@@ -197,24 +224,68 @@ fun PacmanGame() {
 }
 
 // --- Ghost grid movement (no overlapping) ---
-private fun moveGhostGrid(map: Array<IntArray>, ghost: Ghost, pacX: Int, pacY: Int, ghosts: List<Ghost>) {
+private fun moveGhostGrid(map: Array<IntArray>, ghost: Ghost, pacX: Int, pacY: Int, pacDirX: Int, pacDirY: Int, ghosts: List<Ghost>) {
     val dirs = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
-    val possibleDirs = dirs.filter {
-        val nx = ghost.x + it.first
-        val ny = ghost.y + it.second
-        ny in 0 until map.size && nx in 0 until map[0].size && map[ny][nx] != 1 &&
+
+    // Filter out illegal moves (walls, other ghosts)
+    var possibleDirs = dirs.filter { (dx, dy) ->
+        val nx = ghost.x + dx
+        val ny = ghost.y + dy
+        nx in 0 until map[0].size && ny in 0 until map.size && map[ny][nx] != 1 &&
                 ghosts.none { other -> other != ghost && other.x == nx && other.y == ny }
     }
 
-    if (possibleDirs.isNotEmpty()) {
-        val best = when (ghost.type) {
-            GhostType.CHASER -> possibleDirs.minByOrNull { (dx, dy) ->
-                (pacX - (ghost.x + dx)) * (pacX - (ghost.x + dx)) + (pacY - (ghost.y + dy)) * (pacY - (ghost.y + dy))
-            }!!
-            GhostType.RANDOM, GhostType.AMBUSH -> possibleDirs.random()
+    // Prevent reversing direction unless it's a dead end
+    if (possibleDirs.size > 1) {
+        possibleDirs = possibleDirs.filterNot { (dx, dy) ->
+            dx == -ghost.dirX && dy == -ghost.dirY
         }
-        ghost.x += best.first
-        ghost.y += best.second
+    }
+
+    if (possibleDirs.isNotEmpty()) {
+        val bestDir = when (ghost.type) {
+            GhostType.CHASER -> { // Red: chases Pac-Man directly
+                possibleDirs.minByOrNull { (dx, dy) ->
+                    val newX = ghost.x + dx
+                    val newY = ghost.y + dy
+                    (pacX - newX) * (pacX - newX) + (pacY - newY) * (pacY - newY)
+                }
+            }
+            GhostType.AMBUSH -> { // Pink: tries to get in front of Pac-Man
+                val targetX = (pacX + pacDirX * 4).coerceIn(0, map[0].size - 1)
+                val targetY = (pacY + pacDirY * 4).coerceIn(0, map.size - 1)
+                possibleDirs.minByOrNull { (dx, dy) ->
+                    val newX = ghost.x + dx
+                    val newY = ghost.y + dy
+                    (targetX - newX) * (targetX - newX) + (targetY - newY) * (targetY - newY)
+                }
+            }
+            GhostType.RANDOM -> { // Cyan: chases from a distance, flees when close
+                val distanceToPac = abs(ghost.x - pacX) + abs(ghost.y - pacY)
+                if (distanceToPac > 8) {
+                    // Chase Pac-Man
+                     possibleDirs.minByOrNull { (dx, dy) ->
+                        val newX = ghost.x + dx
+                        val newY = ghost.y + dy
+                        (pacX - newX) * (pacX - newX) + (pacY - newY) * (pacY - newY)
+                    }
+                } else {
+                    // Flee to a corner (bottom-left)
+                    val cornerX = 1
+                    val cornerY = map.size - 2
+                     possibleDirs.minByOrNull { (dx, dy) ->
+                        val newX = ghost.x + dx
+                        val newY = ghost.y + dy
+                        (cornerX - newX) * (cornerX - newX) + (cornerY - newY) * (cornerY - newY)
+                    }
+                }
+            }
+        } ?: possibleDirs.random() // Fallback to random if a choice is null
+
+        ghost.x += bestDir.first
+        ghost.y += bestDir.second
+        ghost.dirX = bestDir.first
+        ghost.dirY = bestDir.second
     }
 }
 
