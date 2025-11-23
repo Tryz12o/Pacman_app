@@ -7,16 +7,22 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,7 +95,7 @@ fun PacmanGame() {
             override fun onSensorChanged(event: SensorEvent) {
                 val lux = event.values[0]
                 // Normalize lux value to a brightness factor between 0.2 and 1.0.
-                // We'll consider a lux value of around 670 to be full brightness, making a typical afternoon (400 lux) the midpoint.
+                // We'''ll consider a lux value of around 670 to be full brightness, making a typical afternoon (400 lux) the midpoint.
                 brightness = (lux / 670f).coerceIn(0.2f, 1.0f)
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -181,45 +187,58 @@ fun PacmanGame() {
         }
     }
 
-    // --- Canvas ---
-    Box(modifier = Modifier.fillMaxSize()) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(backgroundColor)
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val centerX = size.width / 2
-                        val centerY = size.height / 2
-                        val dx = offset.x - centerX
-                        val dy = offset.y - centerY
-                        if (abs(dx) > abs(dy)) {
-                            nextDirX = if (dx > 0) 1 else -1
-                            nextDirY = 0
-                        } else {
-                            nextDirY = if (dy > 0) 1 else -1
-                            nextDirX = 0
-                        }
-                    }
-                }
-        ) {
-            val tileWidth = size.width / cols
-            val tileHeight = size.height / rows
-            val tileSize = min(tileWidth, tileHeight)
-            val offsetX = (size.width - tileSize * cols) / 2f
-            val offsetY = (size.height - tileSize * rows) / 2f
+    // --- UI ---
+    Column(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
+        Box(modifier = Modifier.weight(1f)) {
+            Canvas(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                val tileWidth = size.width / cols
+                val tileHeight = size.height / rows
+                val tileSize = min(tileWidth, tileHeight)
+                val offsetX = (size.width - tileSize * cols) / 2f
+                val offsetY = (size.height - tileSize * rows) / 2f
 
-            drawMazeGrid(map, tileSize, offsetX, offsetY, wallColor, dotColor)
-            drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
-            ghosts.forEach { drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor) }
+                drawMazeGrid(map, tileSize, offsetX, offsetY, wallColor, dotColor)
+                drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
+                ghosts.forEach { drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor) }
+            }
+
+            Text(
+                text = "Score: $collectedDots",
+                color = scoreColor,
+                fontSize = 24.sp,
+                modifier = Modifier.padding(16.dp)
+            )
         }
 
-        Text(
-            text = "Score: $collectedDots",
-            color = scoreColor,
-            fontSize = 24.sp,
-            modifier = Modifier.padding(16.dp)
-        )
+        // --- Movement Buttons ---
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row {
+                Button(onClick = { nextDirY = -1; nextDirX = 0 }) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Up")
+                }
+            }
+            Row {
+                Button(onClick = { nextDirX = -1; nextDirY = 0 }) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left")
+                }
+                Spacer(modifier = Modifier.width(64.dp))
+                Button(onClick = { nextDirX = 1; nextDirY = 0 }) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right")
+                }
+            }
+            Row {
+                Button(onClick = { nextDirY = 1; nextDirX = 0 }) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Down")
+                }
+            }
+        }
     }
 }
 
