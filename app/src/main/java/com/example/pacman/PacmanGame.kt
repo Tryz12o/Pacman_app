@@ -30,7 +30,6 @@ import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.min
 
-
 enum class GhostType { CHASER, RANDOM, AMBUSH }
 
 data class Ghost(
@@ -61,7 +60,7 @@ fun PacmanGame() {
     var mouthOpen by remember { mutableStateOf(true) }
     var brightness by remember { mutableStateOf(1f) }
 
-    val map = remember { Array(rows) { IntArray(cols) { 2 } } } // 2=dot,1=wall,0=empty
+    val map = remember { Array(rows) { IntArray(cols) { 2 } } }
 
     var pacX by remember { mutableStateOf(cols / 2) }
     var pacY by remember { mutableStateOf(rows / 2) }
@@ -78,7 +77,46 @@ fun PacmanGame() {
         )
     }
 
-    // --- Pac-Man mouth animation ---
+    // -------------------------------
+    // 📌 ДОДАНО: Змінні акселерометра
+    // -------------------------------
+    var tiltX by remember { mutableStateOf(0f) }
+    var tiltY by remember { mutableStateOf(0f) }
+
+    val context = LocalContext.current
+
+    // ---------------------------------------------
+    // 📌 ДОДАНО: Керування Pac-Man через акселерометр
+    // ---------------------------------------------
+    DisposableEffect(context) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                tiltX = event.values[0]
+                tiltY = event.values[1]
+
+                val threshold = 2.5f
+
+                if (abs(tiltX) > abs(tiltY)) {
+                    if (tiltX < -threshold) { nextDirX = 1; nextDirY = 0 }
+                    else if (tiltX > threshold) { nextDirX = -1; nextDirY = 0 }
+                } else {
+                    if (tiltY < -threshold) { nextDirY = -1; nextDirX = 0 }
+                    else if (tiltY > threshold) { nextDirY = 1; nextDirX = 0 }
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        if (accel != null)
+            sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_GAME)
+
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+
+    // --- Mouth animation ---
     LaunchedEffect(Unit) {
         while (true) {
             mouthOpen = !mouthOpen
@@ -87,40 +125,33 @@ fun PacmanGame() {
     }
 
     // --- Brightness sensor ---
-    val context = LocalContext.current
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val lux = event.values[0]
-                // Normalize lux value to a brightness factor between 0.2 and 1.0.
-                // We'''ll consider a lux value of around 670 to be full brightness, making a typical afternoon (400 lux) the midpoint.
                 brightness = (lux / 670f).coerceIn(0.2f, 1.0f)
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
         sensorManager.registerListener(listener, lightSensor, SensorManager.SENSOR_DELAY_UI)
-        onDispose {
-            sensorManager.unregisterListener(listener)
-        }
+        onDispose { sensorManager.unregisterListener(listener) }
     }
 
     val themeFraction = ((brightness - 0.2f) / 0.8f).coerceIn(0f, 1f)
-
     val backgroundColor = lerp(Color.Black, Color.White, themeFraction)
     val wallColor = lerp(Color.Blue, Color(0f, 0f, 0.5f), themeFraction)
     val dotColor = lerp(Color.White, Color.Black, themeFraction)
     val scoreColor = if (themeFraction > 0.5f) Color.Black else Color.White
 
-
+    // --- Game loop ---
     LaunchedEffect(Unit) {
         fun resetMap() {
-            for (y in 0 until rows) {
-                for (x in 0 until cols) {
+            for (y in 0 until rows)
+                for (x in 0 until cols)
                     map[y][x] = if (x == 0 || y == 0 || x == cols - 1 || y == rows - 1) 1 else 2
-                }
-            }
+
             for (x in 3 until 12) map[4][x] = 1
             for (x in 3 until 12) map[12][x] = 1
         }
@@ -131,6 +162,7 @@ fun PacmanGame() {
         nextDirX = 0; nextDirY = 0
 
         while (true) {
+
             if (gameOver) {
                 delay(1000)
                 collectedDots = 0
@@ -149,38 +181,34 @@ fun PacmanGame() {
             }
 
             // --- Pac-Man movement ---
-            // Check if we can apply the new intended direction from user input
             val tryNextX = pacX + nextDirX
             val tryNextY = pacY + nextDirY
+
             if (nextDirX != 0 || nextDirY != 0) {
-                 if (tryNextY in 0 until rows && tryNextX in 0 until cols && map[tryNextY][tryNextX] != 1) {
+                if (map[tryNextY][tryNextX] != 1) {
                     dirX = nextDirX
                     dirY = nextDirY
                     nextDirX = 0
                     nextDirY = 0
-                 }
+                }
             }
 
-            // Move in the current direction if possible
-            val nextPacX = pacX + dirX
-            val nextPacY = pacY + dirY
-            if (nextPacY in 0 until rows && nextPacX in 0 until cols && map[nextPacY][nextPacX] != 1) {
-                pacX = nextPacX
-                pacY = nextPacY
+            val nx = pacX + dirX
+            val ny = pacY + dirY
+            if (map[ny][nx] != 1) {
+                pacX = nx
+                pacY = ny
             }
 
-            // --- Dot collection ---
             if (map[pacY][pacX] == 2) {
                 map[pacY][pacX] = 0
-                collectedDots += 1
+                collectedDots++
             }
 
-            // --- Ghost movement ---
-            ghosts.forEach { ghost ->
-                moveGhostGrid(map, ghost, pacX, pacY, dirX, dirY, ghosts)
+            ghosts.forEach { g ->
+                moveGhostGrid(map, g, pacX, pacY, dirX, dirY, ghosts)
             }
 
-            // --- Collision check ---
             if (ghosts.any { it.x == pacX && it.y == pacY }) gameOver = true
 
             delay(200)
@@ -190,9 +218,7 @@ fun PacmanGame() {
     // --- UI ---
     Column(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
         Box(modifier = Modifier.weight(1f)) {
-            Canvas(
-                modifier = Modifier.fillMaxSize()
-            ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
                 val tileWidth = size.width / cols
                 val tileHeight = size.height / rows
                 val tileSize = min(tileWidth, tileHeight)
@@ -201,7 +227,9 @@ fun PacmanGame() {
 
                 drawMazeGrid(map, tileSize, offsetX, offsetY, wallColor, dotColor)
                 drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
-                ghosts.forEach { drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor) }
+                ghosts.forEach {
+                    drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor)
+                }
             }
 
             Text(
@@ -212,11 +240,9 @@ fun PacmanGame() {
             )
         }
 
-        // --- Movement Buttons ---
+        // --- Buttons for fallback control ---
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row {
@@ -242,116 +268,119 @@ fun PacmanGame() {
     }
 }
 
-// --- Ghost grid movement (no overlapping) ---
-private fun moveGhostGrid(map: Array<IntArray>, ghost: Ghost, pacX: Int, pacY: Int, pacDirX: Int, pacDirY: Int, ghosts: List<Ghost>) {
+// ---------------- Ghost movement ----------------
+private fun moveGhostGrid(map: Array<IntArray>, ghost: Ghost,
+                          pacX: Int, pacY: Int, pacDirX: Int, pacDirY: Int,
+                          ghosts: List<Ghost>) {
+
     val dirs = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
 
-    // Filter out illegal moves (walls, other ghosts)
-    var possibleDirs = dirs.filter { (dx, dy) ->
+    var possible = dirs.filter { (dx, dy) ->
         val nx = ghost.x + dx
         val ny = ghost.y + dy
-        nx in 0 until map[0].size && ny in 0 until map.size && map[ny][nx] != 1 &&
-                ghosts.none { other -> other != ghost && other.x == nx && other.y == ny }
+        nx in map[0].indices && ny in map.indices &&
+                map[ny][nx] != 1 &&
+                ghosts.none { it != ghost && it.x == nx && it.y == ny }
     }
 
-    // Prevent reversing direction unless it's a dead end
-    if (possibleDirs.size > 1) {
-        possibleDirs = possibleDirs.filterNot { (dx, dy) ->
+    if (possible.size > 1) {
+        possible = possible.filterNot { (dx, dy) ->
             dx == -ghost.dirX && dy == -ghost.dirY
         }
     }
 
-    if (possibleDirs.isNotEmpty()) {
-        val bestDir = when (ghost.type) {
-            GhostType.CHASER -> { // Red: chases Pac-Man directly
-                possibleDirs.minByOrNull { (dx, dy) ->
-                    val newX = ghost.x + dx
-                    val newY = ghost.y + dy
-                    (pacX - newX) * (pacX - newX) + (pacY - newY) * (pacY - newY)
-                }
-            }
-            GhostType.AMBUSH -> { // Pink: tries to get in front of Pac-Man
-                val targetX = (pacX + pacDirX * 4).coerceIn(0, map[0].size - 1)
-                val targetY = (pacY + pacDirY * 4).coerceIn(0, map.size - 1)
-                possibleDirs.minByOrNull { (dx, dy) ->
-                    val newX = ghost.x + dx
-                    val newY = ghost.y + dy
-                    (targetX - newX) * (targetX - newX) + (targetY - newY) * (targetY - newY)
-                }
-            }
-            GhostType.RANDOM -> { // Cyan: chases from a distance, flees when close
-                val distanceToPac = abs(ghost.x - pacX) + abs(ghost.y - pacY)
-                if (distanceToPac > 8) {
-                    // Chase Pac-Man
-                     possibleDirs.minByOrNull { (dx, dy) ->
-                        val newX = ghost.x + dx
-                        val newY = ghost.y + dy
-                        (pacX - newX) * (pacX - newX) + (pacY - newY) * (pacY - newY)
-                    }
-                } else {
-                    // Flee to a corner (bottom-left)
-                    val cornerX = 1
-                    val cornerY = map.size - 2
-                     possibleDirs.minByOrNull { (dx, dy) ->
-                        val newX = ghost.x + dx
-                        val newY = ghost.y + dy
-                        (cornerX - newX) * (cornerX - newX) + (cornerY - newY) * (cornerY - newY)
-                    }
-                }
-            }
-        } ?: possibleDirs.random() // Fallback to random if a choice is null
+    if (possible.isEmpty()) return
 
-        ghost.x += bestDir.first
-        ghost.y += bestDir.second
-        ghost.dirX = bestDir.first
-        ghost.dirY = bestDir.second
-    }
-}
+    val best = when (ghost.type) {
+        GhostType.CHASER ->
+            possible.minByOrNull { (dx, dy) ->
+                val nx = ghost.x + dx
+                val ny = ghost.y + dy
+                (pacX - nx)*(pacX - nx) + (pacY - ny)*(pacY - ny)
+            }
 
-// --- Draw maze ---
-private fun DrawScope.drawMazeGrid(map: Array<IntArray>, tileSize: Float, offsetX: Float, offsetY: Float, wallColor: Color, dotColor: Color) {
-    val rows = map.size
-    val cols = map[0].size
-    for (y in 0 until rows) {
-        for (x in 0 until cols) {
-            val left = x * tileSize + offsetX
-            val top = y * tileSize + offsetY
-            when (map[y][x]) {
-                1 -> drawRect(wallColor, Offset(left, top), Size(tileSize, tileSize))
-                2 -> {
-                    val dotRadius = tileSize / 6
-                    val dotCenter = Offset(left + tileSize / 2, top + tileSize / 2)
-                    // Draw outline for visibility
-                    drawCircle(Color.Black, dotRadius + 1.5f, dotCenter)
-                    drawCircle(dotColor, dotRadius, dotCenter)
+        GhostType.AMBUSH -> {
+            val tx = (pacX + pacDirX * 4).coerceIn(0, map[0].lastIndex)
+            val ty = (pacY + pacDirY * 4).coerceIn(0, map.lastIndex)
+            possible.minByOrNull { (dx, dy) ->
+                val nx = ghost.x + dx
+                val ny = ghost.y + dy
+                (tx - nx)*(tx - nx) + (ty - ny)*(ty - ny)
+            }
+        }
+
+        GhostType.RANDOM -> {
+            val d = abs(ghost.x - pacX) + abs(ghost.y - pacY)
+            if (d > 8) {
+                possible.minByOrNull { (dx, dy) ->
+                    val nx = ghost.x + dx
+                    val ny = ghost.y + dy
+                    (pacX - nx)*(pacX - nx) + (pacY - ny)*(pacY - ny)
+                }
+            } else {
+                val cx = 1
+                val cy = map.lastIndex - 1
+                possible.minByOrNull { (dx, dy) ->
+                    val nx = ghost.x + dx
+                    val ny = ghost.y + dy
+                    (cx - nx)*(cx - nx) + (cy - ny)*(cy - ny)
                 }
             }
         }
-    }
+    } ?: possible.random()
+
+    ghost.x += best.first
+    ghost.y += best.second
+    ghost.dirX = best.first
+    ghost.dirY = best.second
 }
 
-// --- Draw Pac-Man ---
-private fun DrawScope.drawPacmanClassic(pacX: Int, pacY: Int, tileSize: Float, offsetX: Float, offsetY: Float, mouthOpen: Boolean, color: Color) {
-    val centerX = offsetX + (pacX + 0.5f) * tileSize
-    val centerY = offsetY + (pacY + 0.5f) * tileSize
-    val radius = tileSize * 0.4f
-    if (mouthOpen) {
-        drawArc(color, 30f, 300f, true, Offset(centerX - radius, centerY - radius), Size(radius * 2, radius * 2))
-    } else {
-        drawCircle(color, radius, Offset(centerX, centerY))
-    }
+private fun DrawScope.drawMazeGrid(
+    map: Array<IntArray>, tile: Float, ox: Float, oy: Float,
+    wall: Color, dot: Color
+) {
+    for (y in map.indices)
+        for (x in map[0].indices) {
+            val left = x * tile + ox
+            val top = y * tile + oy
+            when (map[y][x]) {
+                1 -> drawRect(wall, Offset(left, top), Size(tile, tile))
+                2 -> {
+                    val r = tile / 6
+                    val c = Offset(left + tile/2, top + tile/2)
+                    drawCircle(Color.Black, r + 1.5f, c)
+                    drawCircle(dot, r, c)
+                }
+            }
+        }
 }
 
-// --- Draw ghost ---
-private fun DrawScope.drawGhostClassic(ghost: Ghost, tileSize: Float, offsetX: Float, offsetY: Float, eyeColor: Color) {
-    val centerX = offsetX + (ghost.x + 0.5f) * tileSize
-    val centerY = offsetY + (ghost.y + 0.5f) * tileSize
-    val radius = tileSize * 0.4f
-    drawCircle(ghost.color, radius, Offset(centerX, centerY - radius / 4))
+private fun DrawScope.drawPacmanClassic(
+    x: Int, y: Int, tile: Float, ox: Float, oy: Float,
+    open: Boolean, color: Color
+) {
+    val cx = ox + (x + 0.5f)*tile
+    val cy = oy + (y + 0.5f)*tile
+    val r = tile*0.4f
+
+    if (open)
+        drawArc(color, 30f, 300f, true, Offset(cx - r, cy - r), Size(r*2, r*2))
+    else
+        drawCircle(color, r, Offset(cx, cy))
+}
+
+private fun DrawScope.drawGhostClassic(
+    g: Ghost, tile: Float, ox: Float, oy: Float, eye: Color
+) {
+    val cx = ox + (g.x + 0.5f)*tile
+    val cy = oy + (g.y + 0.5f)*tile
+    val r = tile*0.4f
+
+    drawCircle(g.color, r, Offset(cx, cy - r/4))
     for (i in 0..3) {
-        val left = centerX - radius + i * radius * 0.66f
-        drawCircle(ghost.color, radius / 4, Offset(left, centerY))
+        val lx = cx - r + i * r*0.66f
+        drawCircle(g.color, r/4, Offset(lx, cy))
     }
-    drawCircle(eyeColor, radius / 5, Offset(centerX - radius / 4, centerY - radius / 4))
-    drawCircle(eyeColor, radius / 5, Offset(centerX + radius / 4, centerY - radius / 4))
+    drawCircle(eye, r/5, Offset(cx - r/4, cy - r/4))
+    drawCircle(eye, r/5, Offset(cx + r/4, cy - r/4))
 }
