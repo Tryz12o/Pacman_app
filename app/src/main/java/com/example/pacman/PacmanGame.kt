@@ -5,6 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -61,7 +63,11 @@ fun PacmanGame() {
     var gameOver by remember { mutableStateOf(false) }
     var collectedDots by remember { mutableStateOf(0) }
     var mouthOpen by remember { mutableStateOf(true) }
-    var brightness by remember { mutableStateOf(1f) }
+    var targetBrightness by remember { mutableStateOf(1f) }
+    val brightness by animateFloatAsState(
+        targetValue = targetBrightness,
+        animationSpec = tween(durationMillis = 1000)
+    )
     var showSettings by remember { mutableStateOf(false) }
     var useGyroscope by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
@@ -151,7 +157,7 @@ fun PacmanGame() {
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val lux = event.values[0]
-                brightness = (lux / 670f).coerceIn(0.2f, 1.0f)
+                targetBrightness = (lux / 670f).coerceIn(0.2f, 1.0f)
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
@@ -450,20 +456,53 @@ private fun DrawScope.drawMazeGrid(
     map: Array<IntArray>, tile: Float, ox: Float, oy: Float,
     wall: Color, dot: Color
 ) {
-    for (y in map.indices)
-        for (x in map[0].indices) {
-            val left = x * tile + ox
-            val top = y * tile + oy
+    val rows = map.size
+    val cols = map[0].size
+    val visited = Array(rows) { BooleanArray(cols) { false } }
+
+    for (y in 0 until rows) {
+        for (x in 0 until cols) {
             when (map[y][x]) {
-                1 -> drawRect(wall, Offset(left, top), Size(tile, tile))
-                2 -> {
+                1 -> { // Wall
+                    if (!visited[y][x]) {
+                        // Find horizontal stretch
+                        var endX = x
+                        while (endX + 1 < cols && map[y][endX + 1] == 1) {
+                            endX++
+                        }
+
+                        // Find vertical stretch
+                        var endY = y
+                        while (endY + 1 < rows && map[endY + 1][x] == 1) {
+                            endY++
+                        }
+
+                        if ((endX - x) >= (endY - y)) { // Prefer horizontal line
+                            val startOffset = Offset(x * tile + ox, y * tile + oy)
+                            val size = Size((endX - x + 1) * tile, tile)
+                            drawRect(wall, startOffset, size)
+                            for (i in x..endX) {
+                                visited[y][i] = true
+                            }
+                        } else { // Draw vertical line
+                            val startOffset = Offset(x * tile + ox, y * tile + oy)
+                            val size = Size(tile, (endY - y + 1) * tile)
+                            drawRect(wall, startOffset, size)
+                            for (i in y..endY) {
+                                visited[i][x] = true
+                            }
+                        }
+                    }
+                }
+                2 -> { // Dot
                     val r = tile / 6
-                    val c = Offset(left + tile/2, top + tile/2)
+                    val c = Offset(x * tile + ox + tile/2, y * tile + oy + tile/2)
                     drawCircle(Color.Black, r + 1.5f, c)
                     drawCircle(dot, r, c)
                 }
             }
         }
+    }
 }
 
 private fun DrawScope.drawPacmanClassic(
