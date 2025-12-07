@@ -13,8 +13,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -59,6 +62,8 @@ fun PacmanGame() {
     var collectedDots by remember { mutableStateOf(0) }
     var mouthOpen by remember { mutableStateOf(true) }
     var brightness by remember { mutableStateOf(1f) }
+    var showSettings by remember { mutableStateOf(false) }
+    var useGyroscope by remember { mutableStateOf(true) }
 
     val map = remember { Array(rows) { IntArray(cols) { 2 } } }
 
@@ -85,35 +90,44 @@ fun PacmanGame() {
 
     val context = LocalContext.current
 
-    // ---------------------------------------------
-    // 📌 ДОДАНО: Керування Pac-Man через акселерометр
-    // ---------------------------------------------
-    DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    if (useGyroscope) {
+        // ---------------------------------------------
+        // 📌 ДОДАНО: Керування Pac-Man через акселерометр
+        // ---------------------------------------------
+        DisposableEffect(context) {
+            val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                tiltX = event.values[0]
-                tiltY = event.values[1]
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    tiltX = event.values[0]
+                    tiltY = event.values[1]
 
-                val threshold = 2.5f
+                    val threshold = 2.5f
 
-                if (abs(tiltX) > abs(tiltY)) {
-                    if (tiltX < -threshold) { nextDirX = 1; nextDirY = 0 }
-                    else if (tiltX > threshold) { nextDirX = -1; nextDirY = 0 }
-                } else {
-                    if (tiltY < -threshold) { nextDirY = -1; nextDirX = 0 }
-                    else if (tiltY > threshold) { nextDirY = 1; nextDirX = 0 }
+                    if (abs(tiltX) > abs(tiltY)) {
+                        if (tiltX < -threshold) {
+                            nextDirX = 1; nextDirY = 0
+                        } else if (tiltX > threshold) {
+                            nextDirX = -1; nextDirY = 0
+                        }
+                    } else {
+                        if (tiltY < -threshold) {
+                            nextDirY = -1; nextDirX = 0
+                        } else if (tiltY > threshold) {
+                            nextDirY = 1; nextDirX = 0
+                        }
+                    }
                 }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+            if (accel != null)
+                sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_GAME)
+
+            onDispose { sensorManager.unregisterListener(listener) }
         }
-
-        if (accel != null)
-            sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_GAME)
-
-        onDispose { sensorManager.unregisterListener(listener) }
     }
 
     // --- Mouth animation ---
@@ -232,36 +246,82 @@ fun PacmanGame() {
                 }
             }
 
-            Text(
-                text = "Score: $collectedDots",
-                color = scoreColor,
-                fontSize = 24.sp,
-                modifier = Modifier.padding(16.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Score: $collectedDots",
+                    color = scoreColor,
+                    fontSize = 24.sp
+                )
+                IconButton(onClick = { showSettings = !showSettings }) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = scoreColor
+                    )
+                }
+            }
+
+            if (showSettings) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(backgroundColor.copy(alpha = 0.8f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .background(wallColor)
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("Settings", color = scoreColor, fontSize = 24.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Use Gyroscope", color = scoreColor)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(checked = useGyroscope, onCheckedChange = { useGyroscope = it })
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { showSettings = false }) {
+                            Text("Close")
+                        }
+                    }
+                }
+            }
         }
 
-        // --- Buttons for fallback control ---
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row {
-                Button(onClick = { nextDirY = -1; nextDirX = 0 }) {
-                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Up")
+        if (!useGyroscope) {
+            // --- Buttons for fallback control ---
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row {
+                    Button(onClick = { nextDirY = -1; nextDirX = 0 }) {
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Up")
+                    }
                 }
-            }
-            Row {
-                Button(onClick = { nextDirX = -1; nextDirY = 0 }) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left")
+                Row {
+                    Button(onClick = { nextDirX = -1; nextDirY = 0 }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left")
+                    }
+                    Spacer(modifier = Modifier.width(64.dp))
+                    Button(onClick = { nextDirX = 1; nextDirY = 0 }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right")
+                    }
                 }
-                Spacer(modifier = Modifier.width(64.dp))
-                Button(onClick = { nextDirX = 1; nextDirY = 0 }) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right")
-                }
-            }
-            Row {
-                Button(onClick = { nextDirY = 1; nextDirX = 0 }) {
-                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Down")
+                Row {
+                    Button(onClick = { nextDirY = 1; nextDirX = 0 }) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Down")
+                    }
                 }
             }
         }
