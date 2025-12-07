@@ -13,7 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,7 +63,10 @@ fun PacmanGame() {
     var mouthOpen by remember { mutableStateOf(true) }
     var brightness by remember { mutableStateOf(1f) }
     var showSettings by remember { mutableStateOf(false) }
-    var useGyroscope by remember { mutableStateOf(true) }
+    var useGyroscope by remember { mutableStateOf(false) }
+    var isPaused by remember { mutableStateOf(false) }
+    var isResuming by remember { mutableStateOf(false) }
+    var countdown by remember { mutableStateOf(0) }
 
     val map = remember { Array(rows) { IntArray(cols) { 2 } } }
 
@@ -100,6 +103,7 @@ fun PacmanGame() {
 
             val listener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
+                    if (isPaused) return
                     tiltX = event.values[0]
                     tiltY = event.values[1]
 
@@ -133,7 +137,9 @@ fun PacmanGame() {
     // --- Mouth animation ---
     LaunchedEffect(Unit) {
         while (true) {
-            mouthOpen = !mouthOpen
+            if (!isPaused) {
+                mouthOpen = !mouthOpen
+            }
             delay(200)
         }
     }
@@ -176,56 +182,68 @@ fun PacmanGame() {
         nextDirX = 0; nextDirY = 0
 
         while (true) {
+            if (!isPaused) {
+                if (gameOver) {
+                    delay(1000)
+                    collectedDots = 0
+                    resetMap()
+                    pacX = cols / 2; pacY = rows / 2
+                    dirX = 0; dirY = 0
+                    nextDirX = 0; nextDirY = 0
+                    ghosts.replaceAll {
+                        when(it.type) {
+                            GhostType.CHASER -> Ghost(1, 1, it.color, it.type)
+                            GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type)
+                            GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type)
+                        }
+                    }
+                    gameOver = false
+                }
 
-            if (gameOver) {
-                delay(1000)
-                collectedDots = 0
-                resetMap()
-                pacX = cols / 2; pacY = rows / 2
-                dirX = 0; dirY = 0
-                nextDirX = 0; nextDirY = 0
-                ghosts.replaceAll {
-                    when(it.type) {
-                        GhostType.CHASER -> Ghost(1, 1, it.color, it.type)
-                        GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type)
-                        GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type)
+                // --- Pac-Man movement ---
+                val tryNextX = pacX + nextDirX
+                val tryNextY = pacY + nextDirY
+
+                if (nextDirX != 0 || nextDirY != 0) {
+                    if (tryNextY in 0 until rows && tryNextX in 0 until cols && map[tryNextY][tryNextX] != 1) {
+                        dirX = nextDirX
+                        dirY = nextDirY
+                        nextDirX = 0
+                        nextDirY = 0
                     }
                 }
-                gameOver = false
-            }
 
-            // --- Pac-Man movement ---
-            val tryNextX = pacX + nextDirX
-            val tryNextY = pacY + nextDirY
-
-            if (nextDirX != 0 || nextDirY != 0) {
-                if (map[tryNextY][tryNextX] != 1) {
-                    dirX = nextDirX
-                    dirY = nextDirY
-                    nextDirX = 0
-                    nextDirY = 0
+                val nx = pacX + dirX
+                val ny = pacY + dirY
+                if (ny in 0 until rows && nx in 0 until cols && map[ny][nx] != 1) {
+                    pacX = nx
+                    pacY = ny
                 }
+
+                if (map[pacY][pacX] == 2) {
+                    map[pacY][pacX] = 0
+                    collectedDots++
+                }
+
+                ghosts.forEach { g ->
+                    moveGhostGrid(map, g, pacX, pacY, dirX, dirY, ghosts)
+                }
+
+                if (ghosts.any { it.x == pacX && it.y == pacY }) gameOver = true
             }
-
-            val nx = pacX + dirX
-            val ny = pacY + dirY
-            if (map[ny][nx] != 1) {
-                pacX = nx
-                pacY = ny
-            }
-
-            if (map[pacY][pacX] == 2) {
-                map[pacY][pacX] = 0
-                collectedDots++
-            }
-
-            ghosts.forEach { g ->
-                moveGhostGrid(map, g, pacX, pacY, dirX, dirY, ghosts)
-            }
-
-            if (ghosts.any { it.x == pacX && it.y == pacY }) gameOver = true
-
             delay(200)
+        }
+    }
+
+    if (isResuming) {
+        LaunchedEffect(Unit) {
+            for (i in 3000 downTo 0 step 100) {
+                countdown = i
+                delay(100)
+            }
+            countdown = 0
+            isPaused = false
+            isResuming = false
         }
     }
 
@@ -258,38 +276,68 @@ fun PacmanGame() {
                     color = scoreColor,
                     fontSize = 24.sp
                 )
-                IconButton(onClick = { showSettings = !showSettings }) {
+                IconButton(onClick = { isPaused = true }) {
                     Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
+                        imageVector = Icons.Filled.Pause,
+                        contentDescription = "Pause",
                         tint = scoreColor
                     )
                 }
             }
 
-            if (showSettings) {
+            if (isPaused) {
+                val overlayColor = backgroundColor.copy(alpha = 0.8f)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(backgroundColor.copy(alpha = 0.8f)),
+                        .background(overlayColor),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .background(wallColor)
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Settings", color = scoreColor, fontSize = 24.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Use Gyroscope", color = scoreColor)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Switch(checked = useGyroscope, onCheckedChange = { useGyroscope = it })
+                    if (showSettings) {
+                        Column(
+                            modifier = Modifier
+                                .background(wallColor)
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Settings", color = scoreColor, fontSize = 24.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Use Gyroscope", color = scoreColor)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Switch(
+                                    checked = useGyroscope,
+                                    onCheckedChange = { useGyroscope = it })
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { showSettings = false }) {
+                                Text("Back")
+                            }
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { showSettings = false }) {
-                            Text("Close")
+                    } else if (isResuming) {
+                        val seconds = countdown / 1000
+                        val tenths = (countdown % 1000) / 100
+                        Text(
+                            text = "${seconds}s.${tenths}ms",
+                            color = scoreColor,
+                            fontSize = 48.sp,
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .background(wallColor)
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Paused", color = scoreColor, fontSize = 24.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { isResuming = true }) {
+                                Text("Resume")
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = { showSettings = true }) {
+                                Text("Settings")
+                            }
                         }
                     }
                 }
@@ -306,7 +354,7 @@ fun PacmanGame() {
             ) {
                 Row {
                     Button(onClick = { nextDirY = -1; nextDirX = 0 }) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Up")
+                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up")
                     }
                 }
                 Row {
@@ -315,12 +363,15 @@ fun PacmanGame() {
                     }
                     Spacer(modifier = Modifier.width(64.dp))
                     Button(onClick = { nextDirX = 1; nextDirY = 0 }) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right")
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Right"
+                        )
                     }
                 }
                 Row {
                     Button(onClick = { nextDirY = 1; nextDirX = 0 }) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Down")
+                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Down")
                     }
                 }
             }
