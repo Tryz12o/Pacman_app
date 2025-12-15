@@ -44,6 +44,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.runtime:runtime")
+    // Biometric authentication
+    implementation("androidx.biometric:biometric:1.1.0")
+    // Fragment KTX (for FragmentActivity)
+    implementation("androidx.fragment:fragment-ktx:1.6.1")
 }
 
 

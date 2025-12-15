@@ -36,6 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
+import androidx.core.content.ContextCompat
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -72,6 +76,7 @@ fun PacmanGame() {
     var gameOver by remember { mutableStateOf(false) }
     var collectedDots by remember { mutableIntStateOf(0) }
     var pacPowered by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(true) }
     var mouthOpen by remember { mutableStateOf(true) }
     var targetBrightness by remember { mutableFloatStateOf(1f) }
     var useLightSensor by remember { mutableStateOf(true) } // New state for light sensor toggle
@@ -112,6 +117,32 @@ fun PacmanGame() {
     }
 
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val biometricManager = BiometricManager.from(context)
+    val canAuthenticate = biometricManager.canAuthenticate() == BiometricManager.BIOMETRIC_SUCCESS
+
+    val executor = remember(context) { ContextCompat.getMainExecutor(context) }
+    val authCallback = remember {
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                locked = false
+                isPaused = false
+            }
+        }
+    }
+
+    val biometricPrompt = remember(activity, executor, authCallback) {
+        activity?.let { BiometricPrompt(it, executor, authCallback) }
+    }
+
+    val promptInfo = remember {
+        BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock Pac-Man")
+            .setSubtitle("Authenticate with fingerprint")
+            .setNegativeButtonText("Cancel")
+            .build()
+    }
 
     if (useGyroscope) {
         DisposableEffect(context) {
@@ -324,6 +355,31 @@ fun PacmanGame() {
                 drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
                 ghosts.forEach {
                     if (it.alive) drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor)
+                }
+            }
+
+            if (locked) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("App locked", color = Color.White, fontSize = 20.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(onClick = {
+                            if (canAuthenticate) {
+                                biometricPrompt?.authenticate(promptInfo)
+                            } else {
+                                // fallback: if biometric not available, unlock
+                                locked = false
+                                isPaused = false
+                            }
+                        }) {
+                            Text(if (canAuthenticate) "Unlock with fingerprint" else "Unlock")
+                        }
+                    }
                 }
             }
 
