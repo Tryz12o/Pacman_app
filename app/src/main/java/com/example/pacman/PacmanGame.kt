@@ -124,7 +124,8 @@ fun PacmanGame() {
                     val tiltX = event.values[0]
                     val tiltY = event.values[1]
 
-                    val threshold = 2.5f
+                    // Lower threshold to make Pac-Man more responsive to light tilts
+                    val threshold = 0.8f
 
                     if (abs(tiltX) > abs(tiltY)) {
                         if (tiltX < -threshold) {
