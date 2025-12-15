@@ -39,7 +39,6 @@ import kotlin.math.abs
 import kotlin.math.min
 
 enum class GhostType { CHASER, RANDOM, AMBUSH }
-
 enum class AppTheme { SYSTEM, LIGHT, DARK }
 
 data class Ghost(
@@ -65,19 +64,19 @@ private fun lerp(start: Color, stop: Color, fraction: Float): Color {
 fun PacmanGame() {
     val rows = 17
     val cols = 15
+
     var gameOver by remember { mutableStateOf(false) }
     var collectedDots by remember { mutableIntStateOf(0) }
     var mouthOpen by remember { mutableStateOf(true) }
     var targetBrightness by remember { mutableFloatStateOf(1f) }
-    var useLightSensor by remember { mutableStateOf(true) } // New state for light sensor toggle
-    var selectedTheme by remember { mutableStateOf(AppTheme.SYSTEM) } // New state for theme selection
-
+    var useLightSensor by remember { mutableStateOf(true) }
+    var selectedTheme by remember { mutableStateOf(AppTheme.SYSTEM) }
     val brightness by animateFloatAsState(
         targetValue = if (useLightSensor) targetBrightness else {
             when (selectedTheme) {
                 AppTheme.LIGHT -> 1f
                 AppTheme.DARK -> 0.2f
-                AppTheme.SYSTEM -> targetBrightness // System theme will still react to light sensor
+                AppTheme.SYSTEM -> targetBrightness
             }
         },
         animationSpec = tween(durationMillis = 1000)
@@ -91,12 +90,12 @@ fun PacmanGame() {
 
     val map = remember { Array(rows) { IntArray(cols) { 2 } } }
 
-    var pacX by remember { mutableIntStateOf(cols / 2).apply { value } }
-    var pacY by remember { mutableIntStateOf(rows / 2).apply { value } }
-    var dirX by remember { mutableIntStateOf(0).apply { value } }
-    var dirY by remember { mutableIntStateOf(0).apply { value } }
-    var nextDirX by remember { mutableIntStateOf(0).apply { value } }
-    var nextDirY by remember { mutableIntStateOf(0).apply { value } }
+    var pacX by remember { mutableIntStateOf(cols / 2) }
+    var pacY by remember { mutableIntStateOf(rows / 2) }
+    var dirX by remember { mutableIntStateOf(0) }
+    var dirY by remember { mutableIntStateOf(0) }
+    var nextDirX by remember { mutableIntStateOf(0) }
+    var nextDirY by remember { mutableIntStateOf(0) }
 
     val ghosts = remember {
         mutableStateListOf(
@@ -108,55 +107,41 @@ fun PacmanGame() {
 
     val context = LocalContext.current
 
+    // Gyroscope control
     if (useGyroscope) {
         DisposableEffect(context) {
             val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
             val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-
             val listener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
                     if (isPaused) return
                     val tiltX = event.values[0]
                     val tiltY = event.values[1]
-
                     val threshold = 2.5f
-
                     if (abs(tiltX) > abs(tiltY)) {
-                        if (tiltX < -threshold) {
-                            nextDirX = 1; nextDirY = 0
-                        } else if (tiltX > threshold) {
-                            nextDirX = -1; nextDirY = 0
-                        }
+                        if (tiltX < -threshold) { nextDirX = 1; nextDirY = 0 }
+                        else if (tiltX > threshold) { nextDirX = -1; nextDirY = 0 }
                     } else {
-                        if (tiltY < -threshold) {
-                            nextDirY = -1; nextDirX = 0
-                        } else if (tiltY > threshold) {
-                            nextDirY = 1; nextDirX = 0
-                        }
+                        if (tiltY < -threshold) { nextDirY = -1; nextDirX = 0 }
+                        else if (tiltY > threshold) { nextDirY = 1; nextDirX = 0 }
                     }
                 }
-
                 override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
             }
-
-            if (accel != null)
-                sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_GAME)
-
+            if (accel != null) sensorManager.registerListener(listener, accel, SensorManager.SENSOR_DELAY_GAME)
             onDispose { sensorManager.unregisterListener(listener) }
         }
     }
 
-    // --- Mouth animation ---
+    // Mouth animation
     LaunchedEffect(Unit) {
         while (true) {
-            if (!isPaused) {
-                mouthOpen = !mouthOpen
-            }
+            if (!isPaused) mouthOpen = !mouthOpen
             delay(200)
         }
     }
 
-    // --- Brightness sensor ---
+    // Brightness sensor
     if (useLightSensor) {
         DisposableEffect(context) {
             val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -165,17 +150,14 @@ fun PacmanGame() {
                 override fun onSensorChanged(event: SensorEvent) {
                     if(isPaused) return
                     val lux = event.values[0]
-                    @Suppress("UNUSED_VALUE") // False positive: value is read by 'brightness' state
                     targetBrightness = (lux / 670f).coerceIn(0.2f, 1.0f)
                 }
-
                 override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
             }
             sensorManager.registerListener(listener, lightSensor, SensorManager.SENSOR_DELAY_UI)
             onDispose { sensorManager.unregisterListener(listener) }
         }
     }
-
 
     val themeFraction = ((brightness - 0.2f) / 0.8f).coerceIn(0f, 1f)
     val backgroundColor = lerp(Color.Black, Color.White, themeFraction)
@@ -186,14 +168,16 @@ fun PacmanGame() {
     // --- Game loop ---
     LaunchedEffect(Unit) {
         fun resetMap() {
-            for (y in 0 until rows)
-                for (x in 0 until cols)
-                    map[y][x] = if (x == 0 || y == 0 || x == cols - 1 || y == rows - 1) 1 else 2
-
+            for (y in 0 until rows) for (x in 0 until cols)
+                map[y][x] = if (x == 0 || y == 0 || x == cols - 1 || y == rows - 1) 1 else 2
             for (x in 3 until 12) map[4][x] = 1
             for (x in 3 until 12) map[12][x] = 1
-        }
 
+            // --- Three green special dots ---
+            map[2][2] = 3
+            map[rows - 3][cols - 3] = 3
+            map[8][7] = 3
+        }
         resetMap()
         pacX = cols / 2; pacY = rows / 2
         dirX = 0; dirY = 0
@@ -208,20 +192,19 @@ fun PacmanGame() {
                     pacX = cols / 2; pacY = rows / 2
                     dirX = 0; dirY = 0
                     nextDirX = 0; nextDirY = 0
-                    ghosts.replaceAll {
-                        when (it.type) {
-                            GhostType.CHASER -> Ghost(1, 1, it.color, it.type)
-                            GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type)
-                            GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type)
+                    ghosts.replaceAll { g ->
+                        when (g.type) {
+                            GhostType.CHASER -> Ghost(1, 1, g.color, g.type)
+                            GhostType.RANDOM -> Ghost(cols - 2, 1, g.color, g.type)
+                            GhostType.AMBUSH -> Ghost(1, rows - 2, g.color, g.type)
                         }
                     }
                     gameOver = false
                 }
 
-                // --- Pac-Man movement ---
+                // Pac-Man movement
                 val tryNextX = pacX + nextDirX
                 val tryNextY = pacY + nextDirY
-
                 if (nextDirX != 0 || nextDirY != 0) {
                     if (tryNextY in 0 until rows && tryNextX in 0 until cols && map[tryNextY][tryNextX] != 1) {
                         dirX = nextDirX
@@ -230,7 +213,6 @@ fun PacmanGame() {
                         nextDirY = 0
                     }
                 }
-
                 val nx = pacX + dirX
                 val ny = pacY + dirY
                 if (ny in 0 until rows && nx in 0 until cols && map[ny][nx] != 1) {
@@ -241,6 +223,9 @@ fun PacmanGame() {
                 if (map[pacY][pacX] == 2) {
                     map[pacY][pacX] = 0
                     collectedDots++
+                } else if (map[pacY][pacX] == 3) {
+                    map[pacY][pacX] = 0
+                    collectedDots += 5 // Green dot special value
                 }
 
                 ghosts.forEach { g ->
@@ -253,6 +238,7 @@ fun PacmanGame() {
         }
     }
 
+    // --- Resuming countdown ---
     if (isResuming) {
         LaunchedEffect(Unit) {
             for (i in 3000 downTo 0 step 100) {
@@ -274,14 +260,12 @@ fun PacmanGame() {
                 val tileSize = min(tileWidth, tileHeight)
                 val offsetX = (size.width - tileSize * cols) / 2f
                 val offsetY = (size.height - tileSize * rows) / 2f
-
                 drawMazeGrid(map, tileSize, offsetX, offsetY, wallColor, dotColor)
                 drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
-                ghosts.forEach {
-                    drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor)
-                }
+                ghosts.forEach { drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor) }
             }
 
+            // Score + pause button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -289,24 +273,16 @@ fun PacmanGame() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Score: $collectedDots",
-                    color = scoreColor,
-                    fontSize = 24.sp
-                )
+                Text(text = "Score: $collectedDots", color = scoreColor, fontSize = 24.sp)
                 IconButton(onClick = { isPaused = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.Pause,
-                        contentDescription = "Pause",
-                        tint = scoreColor
-                    )
+                    Icon(Icons.Filled.Pause, contentDescription = "Pause", tint = scoreColor)
                 }
             }
 
+            // Pause menu
             if (isPaused) {
                 val fixedWallColor = lerp(Color.Blue, Color(0f, 0f, 0.5f), 0f)
                 val fixedScoreColor = Color.White
-
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -325,23 +301,16 @@ fun PacmanGame() {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Use Gyroscope", color = fixedScoreColor)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Switch(
-                                    checked = useGyroscope,
-                                    onCheckedChange = { useGyroscope = it })
+                                Switch(checked = useGyroscope, onCheckedChange = { useGyroscope = it })
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Use Light Sensor", color = fixedScoreColor)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Switch(
-                                    checked = useLightSensor,
-                                    onCheckedChange = {
-                                        useLightSensor = it
-                                        // Reset to system theme if light sensor is enabled
-                                        @Suppress("UNUSED_VALUE") // False positive: value is read by 'brightness' state
-                                        if (it) selectedTheme = AppTheme.SYSTEM
-                                    }
-                                )
+                                Switch(checked = useLightSensor, onCheckedChange = {
+                                    useLightSensor = it
+                                    if (it) selectedTheme = AppTheme.SYSTEM
+                                })
                             }
                             if (!useLightSensor) {
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -349,39 +318,18 @@ fun PacmanGame() {
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceAround
                                 ) {
-                                    Button(onClick = {
-                                        @Suppress("UNUSED_VALUE") // False positive: value is read by 'brightness' state
-                                        selectedTheme = AppTheme.SYSTEM
-                                    }) {
-                                        Text("System", color = fixedScoreColor)
-                                    }
-                                    Button(onClick = {
-                                        @Suppress("UNUSED_VALUE") // False positive: value is read by 'brightness' state
-                                        selectedTheme = AppTheme.LIGHT
-                                    }) {
-                                        Text("Light", color = fixedScoreColor)
-                                    }
-                                    Button(onClick = {
-                                        @Suppress("UNUSED_VALUE") // False positive: value is read by 'brightness' state
-                                        selectedTheme = AppTheme.DARK
-                                    }) {
-                                        Text("Dark", color = fixedScoreColor)
-                                    }
+                                    Button(onClick = { selectedTheme = AppTheme.SYSTEM }) { Text("System", color = fixedScoreColor) }
+                                    Button(onClick = { selectedTheme = AppTheme.LIGHT }) { Text("Light", color = fixedScoreColor) }
+                                    Button(onClick = { selectedTheme = AppTheme.DARK }) { Text("Dark", color = fixedScoreColor) }
                                 }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { showSettings = false }) {
-                                Text("Back")
-                            }
+                            Button(onClick = { showSettings = false }) { Text("Back") }
                         }
                     } else if (isResuming) {
                         val seconds = countdown / 1000
                         val tenths = (countdown % 1000) / 100
-                        Text(
-                            text = "${seconds}s.${tenths}ms",
-                            color = fixedScoreColor,
-                            fontSize = 48.sp,
-                        )
+                        Text(text = "${seconds}s.${tenths}ms", color = fixedScoreColor, fontSize = 48.sp)
                     } else {
                         Column(
                             modifier = Modifier
@@ -391,49 +339,30 @@ fun PacmanGame() {
                         ) {
                             Text("Paused", color = fixedScoreColor, fontSize = 24.sp)
                             Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { isResuming = true }) {
-                                Text("Resume")
-                            }
+                            Button(onClick = { isResuming = true }) { Text("Resume") }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = { showSettings = true }) {
-                                Text("Settings")
-                            }
+                            Button(onClick = { showSettings = true }) { Text("Settings") }
                         }
                     }
                 }
             }
         }
 
+        // Fallback buttons (if no gyroscope)
         if (!useGyroscope) {
-            // --- Buttons for fallback control ---
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Row { Button(onClick = { nextDirY = -1; nextDirX = 0 }) { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up") } }
                 Row {
-                    Button(onClick = { nextDirY = -1; nextDirX = 0 }) {
-                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up")
-                    }
-                }
-                Row {
-                    Button(onClick = { nextDirX = -1; nextDirY = 0 }) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left")
-                    }
+                    Button(onClick = { nextDirX = -1; nextDirY = 0 }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left") }
                     Spacer(modifier = Modifier.width(64.dp))
-                    Button(onClick = { nextDirX = 1; nextDirY = 0 }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = "Right"
-                        )
-                    }
+                    Button(onClick = { nextDirX = 1; nextDirY = 0 }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right") }
                 }
-                Row {
-                    Button(onClick = { nextDirY = 1; nextDirX = 0 }) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Down")
-                    }
-                }
+                Row { Button(onClick = { nextDirY = 1; nextDirX = 0 }) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Down") } }
             }
         }
     }
@@ -441,37 +370,30 @@ fun PacmanGame() {
 
 // ---------------- Ghost movement ----------------
 private fun moveGhostGrid(
-    map: Array<IntArray>, ghost: Ghost,
-    pacX: Int, pacY: Int, pacDirX: Int, pacDirY: Int,
+    map: Array<IntArray>,
+    ghost: Ghost,
+    pacX: Int,
+    pacY: Int,
+    pacDirX: Int,
+    pacDirY: Int,
     ghosts: List<Ghost>
 ) {
-
     val dirs = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
-
     var possible = dirs.filter { (dx, dy) ->
         val nx = ghost.x + dx
         val ny = ghost.y + dy
-        nx in map[0].indices && ny in map.indices &&
-                map[ny][nx] != 1 &&
-                ghosts.none { it != ghost && it.x == nx && it.y == ny }
+        nx in map[0].indices && ny in map.indices && map[ny][nx] != 1 && ghosts.none { it != ghost && it.x == nx && it.y == ny }
     }
-
     if (possible.size > 1) {
-        possible = possible.filterNot { (dx, dy) ->
-            dx == -ghost.dirX && dy == -ghost.dirY
-        }
+        possible = possible.filterNot { (dx, dy) -> dx == -ghost.dirX && dy == -ghost.dirY }
     }
-
     if (possible.isEmpty()) return
-
     val best = when (ghost.type) {
-        GhostType.CHASER ->
-            possible.minByOrNull { (dx, dy) ->
-                val nx = ghost.x + dx
-                val ny = ghost.y + dy
-                (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
-            }
-
+        GhostType.CHASER -> possible.minByOrNull { (dx, dy) ->
+            val nx = ghost.x + dx
+            val ny = ghost.y + dy
+            (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
+        }
         GhostType.AMBUSH -> {
             val tx = (pacX + pacDirX * 4).coerceIn(0, map[0].lastIndex)
             val ty = (pacY + pacDirY * 4).coerceIn(0, map.lastIndex)
@@ -481,7 +403,6 @@ private fun moveGhostGrid(
                 (tx - nx) * (tx - nx) + (ty - ny) * (ty - ny)
             }
         }
-
         GhostType.RANDOM -> {
             val d = abs(ghost.x - pacX) + abs(ghost.y - pacY)
             if (d > 8) {
@@ -490,103 +411,42 @@ private fun moveGhostGrid(
                     val ny = ghost.y + dy
                     (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
                 }
-            } else {
-                val cx = 1
-                val cy = map.lastIndex - 1
-                possible.minByOrNull { (dx, dy) ->
-                    val nx = ghost.x + dx
-                    val ny = ghost.y + dy
-                    (cx - nx) * (cx - nx) + (cy - ny) * (cy - ny)
-                }
-            }
+            } else possible.randomOrNull()
         }
     } ?: possible.random()
-
-    ghost.x += best.first
-    ghost.y += best.second
     ghost.dirX = best.first
     ghost.dirY = best.second
+    ghost.x += ghost.dirX
+    ghost.y += ghost.dirY
 }
 
-private fun DrawScope.drawMazeGrid(
-    map: Array<IntArray>, tile: Float, ox: Float, oy: Float,
-    wall: Color, dot: Color
-) {
-    val rows = map.size
-    val cols = map[0].size
-    val visited = Array(rows) { BooleanArray(cols) { false } }
-
-    for (y in 0 until rows) {
-        for (x in 0 until cols) {
+// ---------------- Drawing helpers ----------------
+private fun DrawScope.drawMazeGrid(map: Array<IntArray>, tileSize: Float, offsetX: Float, offsetY: Float, wallColor: Color, dotColor: Color) {
+    for (y in map.indices) {
+        for (x in map[0].indices) {
+            val left = offsetX + x * tileSize
+            val top = offsetY + y * tileSize
             when (map[y][x]) {
-                1 -> { // Wall
-                    if (!visited[y][x]) {
-                        // Find horizontal stretch
-                        var endX = x
-                        while (endX + 1 < cols && map[y][endX + 1] == 1) {
-                            endX++
-                        }
-
-                        // Find vertical stretch
-                        var endY = y
-                        while (endY + 1 < rows && map[endY + 1][x] == 1) {
-                            endY++
-                        }
-
-                        if ((endX - x) >= (endY - y)) { // Prefer horizontal line
-                            val startOffset = Offset(x * tile + ox, y * tile + oy)
-                            val size = Size((endX - x + 1) * tile, tile)
-                            drawRect(wall, startOffset, size)
-                            for (i in x..endX) {
-                                visited[y][i] = true
-                            }
-                        } else { // Draw vertical line
-                            val startOffset = Offset(x * tile + ox, y * tile + oy)
-                            val size = Size(tile, (endY - y + 1) * tile)
-                            drawRect(wall, startOffset, size)
-                            for (i in y..endY) {
-                                visited[i][x] = true
-                            }
-                        }
-                    }
-                }
-                2 -> { // Dot
-                    val r = tile / 6
-                    val c = Offset(x * tile + ox + tile / 2, y * tile + oy + tile / 2)
-                    drawCircle(Color.Black, r + 1.5f, c)
-                    drawCircle(dot, r, c)
-                }
+                1 -> drawRect(wallColor, topLeft = Offset(left, top), size = Size(tileSize, tileSize))
+                2 -> drawCircle(dotColor, radius = tileSize / 8, center = Offset(left + tileSize / 2, top + tileSize / 2))
+                3 -> drawCircle(Color.Green, radius = tileSize / 6, center = Offset(left + tileSize / 2, top + tileSize / 2))
             }
         }
     }
 }
 
-private fun DrawScope.drawPacmanClassic(
-    x: Int, y: Int, tile: Float, ox: Float, oy: Float,
-    open: Boolean, color: Color
-) {
-    val cx = ox + (x + 0.5f) * tile
-    val cy = oy + (y + 0.5f) * tile
-    val r = tile * 0.4f
-
-    if (open)
-        drawArc(color, 30f, 300f, true, Offset(cx - r, cy - r), Size(r * 2, r * 2))
-    else
-        drawCircle(color, r, Offset(cx, cy))
+private fun DrawScope.drawPacmanClassic(x: Int, y: Int, tileSize: Float, offsetX: Float, offsetY: Float, mouthOpen: Boolean, color: Color) {
+    val left = offsetX + x * tileSize
+    val top = offsetY + y * tileSize
+    val center = Offset(left + tileSize / 2, top + tileSize / 2)
+    val sweep = if (mouthOpen) 270f else 360f
+    drawArc(color, startAngle = 45f, sweepAngle = sweep, useCenter = true, topLeft = Offset(left, top), size = Size(tileSize, tileSize))
 }
 
-private fun DrawScope.drawGhostClassic(
-    g: Ghost, tile: Float, ox: Float, oy: Float, eye: Color
-) {
-    val cx = ox + (g.x + 0.5f) * tile
-    val cy = oy + (g.y + 0.5f) * tile
-    val r = tile * 0.4f
-
-    drawCircle(g.color, r, Offset(cx, cy - r / 4))
-    for (i in 0..3) {
-        val lx = cx - r + i * r * 0.66f
-        drawCircle(g.color, r / 4, Offset(lx, cy))
-    }
-    drawCircle(eye, r / 5, Offset(cx - r / 4, cy - r / 4))
-    drawCircle(eye, r / 5, Offset(cx + r / 4, cy - r / 4))
+private fun DrawScope.drawGhostClassic(ghost: Ghost, tileSize: Float, offsetX: Float, offsetY: Float, eyeColor: Color) {
+    val left = offsetX + ghost.x * tileSize
+    val top = offsetY + ghost.y * tileSize
+    drawRect(ghost.color, topLeft = Offset(left, top), size = Size(tileSize, tileSize))
+    drawCircle(eyeColor, radius = tileSize / 8, center = Offset(left + tileSize / 4, top + tileSize / 3))
+    drawCircle(eyeColor, radius = tileSize / 8, center = Offset(left + 3 * tileSize / 4, top + tileSize / 3))
 }
