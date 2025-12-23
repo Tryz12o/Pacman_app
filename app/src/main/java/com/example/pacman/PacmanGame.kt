@@ -79,6 +79,7 @@ fun PacmanGame() {
     var gameOver by remember { mutableStateOf(false) }
     var collectedDots by remember { mutableIntStateOf(0) }
     var pacPowered by remember { mutableStateOf(false) }
+    var pacPowerTimeLeft by remember { mutableLongStateOf(0L) }
     var locked by remember { mutableStateOf(true) }
     var mouthOpen by remember { mutableStateOf(true) }
     var targetBrightness by remember { mutableFloatStateOf(1f) }
@@ -267,6 +268,8 @@ fun PacmanGame() {
         pacX = cols / 2; pacY = rows / 2
         dirX = 0; dirY = 0
         nextDirX = 0; nextDirY = 0
+        pacPowerTimeLeft = 0L
+        pacPowered = false
         ghosts.replaceAll {
             when (it.type) {
                 GhostType.CHASER -> Ghost(1, 1, it.color, it.type, 1, 1)
@@ -311,6 +314,19 @@ fun PacmanGame() {
                 mouthOpen = !mouthOpen
             }
             delay(200)
+        }
+    }
+
+    // Power-up countdown effect
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (!isPaused && pacPowerTimeLeft > 0) {
+                pacPowerTimeLeft = (pacPowerTimeLeft - 100L).coerceAtLeast(0L)
+                if (pacPowerTimeLeft == 0L) {
+                    pacPowered = false
+                }
+            }
+            delay(100)
         }
     }
 
@@ -368,7 +384,7 @@ fun PacmanGame() {
                     map[pacY][pacX] = 0
                     collectedDots++
                     pacPowered = true
-                    launch { delay(8000); pacPowered = false }
+                    pacPowerTimeLeft = 8000L
                 }
 
                 ghosts.forEach { g ->
@@ -480,10 +496,36 @@ fun PacmanGame() {
             }
 
             if (!showLevelSelector) {
-                Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "Score: $collectedDots", color = scoreColor, fontSize = 24.sp)
-                    IconButton(onClick = { isPaused = true }) {
-                        Icon(imageVector = Icons.Filled.Pause, contentDescription = "Pause", tint = scoreColor)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "Score: $collectedDots", color = scoreColor, fontSize = 24.sp)
+                        IconButton(onClick = { isPaused = true }) {
+                            Icon(imageVector = Icons.Filled.Pause, contentDescription = "Pause", tint = scoreColor)
+                        }
+                    }
+                    
+                    if (pacPowerTimeLeft > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 0.dp)) { //Powerup timer vertical height 'padding(top = X.dp)'
+                            Canvas(modifier = Modifier.size(20.dp)) {
+                                drawCircle(Color.Green, radius = size.minDimension / 2)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .width(120.dp)
+                                    .height(10.dp)
+                                    .background(Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(5.dp))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(pacPowerTimeLeft / 8000f)
+                                        .background(Color.Green, RoundedCornerShape(5.dp))
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "${(pacPowerTimeLeft / 1000f).toInt()}s", color = scoreColor, fontSize = 14.sp)
+                        }
                     }
                 }
             }
