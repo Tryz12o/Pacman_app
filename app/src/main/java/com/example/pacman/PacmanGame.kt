@@ -35,6 +35,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
+import androidx.core.content.ContextCompat
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -47,8 +52,11 @@ data class Ghost(
     var y: Int,
     val color: Color,
     val type: GhostType,
+    val homeX: Int,
+    val homeY: Int,
     var dirX: Int = 0,
-    var dirY: Int = 0
+    var dirY: Int = 0,
+    var alive: Boolean = true
 )
 
 private fun lerp(start: Color, stop: Color, fraction: Float): Color {
@@ -67,6 +75,8 @@ fun PacmanGame() {
     val cols = 15
     var gameOver by remember { mutableStateOf(false) }
     var collectedDots by remember { mutableIntStateOf(0) }
+    var pacPowered by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(true) }
     var mouthOpen by remember { mutableStateOf(true) }
     var targetBrightness by remember { mutableFloatStateOf(1f) }
     var useLightSensor by remember { mutableStateOf(true) } // New state for light sensor toggle
@@ -100,13 +110,39 @@ fun PacmanGame() {
 
     val ghosts = remember {
         mutableStateListOf(
-            Ghost(1, 1, Color.Red, GhostType.CHASER),
-            Ghost(cols - 2, 1, Color.Cyan, GhostType.RANDOM),
-            Ghost(1, rows - 2, Color.Magenta, GhostType.AMBUSH)
+            Ghost(1, 1, Color.Red, GhostType.CHASER, 1, 1),
+            Ghost(cols - 2, 1, Color.Cyan, GhostType.RANDOM, cols - 2, 1),
+            Ghost(1, rows - 2, Color.Magenta, GhostType.AMBUSH, 1, rows - 2)
         )
     }
 
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val biometricManager = BiometricManager.from(context)
+    val canAuthenticate = biometricManager.canAuthenticate() == BiometricManager.BIOMETRIC_SUCCESS
+
+    val executor = remember(context) { ContextCompat.getMainExecutor(context) }
+    val authCallback = remember {
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                locked = false
+                isPaused = false
+            }
+        }
+    }
+
+    val biometricPrompt = remember(activity, executor, authCallback) {
+        activity?.let { BiometricPrompt(it, executor, authCallback) }
+    }
+
+    val promptInfo = remember {
+        BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock Pac-Man")
+            .setSubtitle("Authenticate with fingerprint")
+            .setNegativeButtonText("Cancel")
+            .build()
+    }
 
     if (useGyroscope) {
         DisposableEffect(context) {
@@ -119,7 +155,8 @@ fun PacmanGame() {
                     val tiltX = event.values[0]
                     val tiltY = event.values[1]
 
-                    val threshold = 2.5f
+                    // Lower threshold to make Pac-Man more responsive to light tilts
+                    val threshold = 0.8f
 
                     if (abs(tiltX) > abs(tiltY)) {
                         if (tiltX < -threshold) {
@@ -192,6 +229,18 @@ fun PacmanGame() {
 
             for (x in 3 until 12) map[4][x] = 1
             for (x in 3 until 12) map[12][x] = 1
+            // place four green power-pellets (bigger dots)
+            val powerPositions = listOf(
+                2 to 2,
+                cols - 3 to 2,
+                2 to rows - 3,
+                cols - 3 to rows - 3
+            )
+            for ((px, py) in powerPositions) {
+                if (py in 0 until rows && px in 0 until cols && map[py][px] != 1) {
+                    map[py][px] = 3
+                }
+            }
         }
 
         resetMap()
@@ -210,9 +259,9 @@ fun PacmanGame() {
                     nextDirX = 0; nextDirY = 0
                     ghosts.replaceAll {
                         when (it.type) {
-                            GhostType.CHASER -> Ghost(1, 1, it.color, it.type)
-                            GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type)
-                            GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type)
+                            GhostType.CHASER -> Ghost(1, 1, it.color, it.type, 1, 1)
+                            GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type, cols - 2, 1)
+                            GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type, 1, rows - 2)
                         }
                     }
                     gameOver = false
@@ -241,13 +290,40 @@ fun PacmanGame() {
                 if (map[pacY][pacX] == 2) {
                     map[pacY][pacX] = 0
                     collectedDots++
+                } else if (map[pacY][pacX] == 3) {
+                    // Power pellet: make Pac-Man invulnerable for a short time
+                    map[pacY][pacX] = 0
+                    collectedDots++
+                    pacPowered = true
+                    launch {
+                        delay(8000)
+                        pacPowered = false
+                    }
                 }
 
                 ghosts.forEach { g ->
-                    moveGhostGrid(map, g, pacX, pacY, dirX, dirY, ghosts)
+                    if (g.alive) moveGhostGrid(map, g, pacX, pacY, dirX, dirY, ghosts)
                 }
 
-                if (ghosts.any { it.x == pacX && it.y == pacY }) gameOver = true
+                // Handle collisions with ghosts: if powered, 'eat' ghost -> disappear 3s then respawn
+                ghosts.forEach { g ->
+                    if (g.alive && g.x == pacX && g.y == pacY) {
+                        if (pacPowered) {
+                            g.alive = false
+                            // respawn after 3 seconds at home
+                            launch {
+                                delay(3000)
+                                g.x = g.homeX
+                                g.y = g.homeY
+                                g.dirX = 0
+                                g.dirY = 0
+                                g.alive = true
+                            }
+                        } else {
+                            gameOver = true
+                        }
+                    }
+                }
             }
             delay(200)
         }
@@ -278,7 +354,32 @@ fun PacmanGame() {
                 drawMazeGrid(map, tileSize, offsetX, offsetY, wallColor, dotColor)
                 drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
                 ghosts.forEach {
-                    drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor)
+                    if (it.alive) drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor)
+                }
+            }
+
+            if (locked) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("App locked", color = Color.White, fontSize = 20.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(onClick = {
+                            if (canAuthenticate) {
+                                biometricPrompt?.authenticate(promptInfo)
+                            } else {
+                                // fallback: if biometric not available, unlock
+                                locked = false
+                                isPaused = false
+                            }
+                        }) {
+                            Text(if (canAuthenticate) "Unlock with fingerprint" else "Unlock")
+                        }
+                    }
                 }
             }
 
@@ -453,7 +554,7 @@ private fun moveGhostGrid(
         val ny = ghost.y + dy
         nx in map[0].indices && ny in map.indices &&
                 map[ny][nx] != 1 &&
-                ghosts.none { it != ghost && it.x == nx && it.y == ny }
+                ghosts.none { it != ghost && it.alive && it.x == nx && it.y == ny }
     }
 
     if (possible.size > 1) {
@@ -555,6 +656,12 @@ private fun DrawScope.drawMazeGrid(
                     val c = Offset(x * tile + ox + tile / 2, y * tile + oy + tile / 2)
                     drawCircle(Color.Black, r + 1.5f, c)
                     drawCircle(dot, r, c)
+                }
+                3 -> { // Power pellet (bigger green dot)
+                    val r = tile / 3
+                    val c = Offset(x * tile + ox + tile / 2, y * tile + oy + tile / 2)
+                    drawCircle(Color.Black, r + 2f, c)
+                    drawCircle(Color.Green, r, c)
                 }
             }
         }
