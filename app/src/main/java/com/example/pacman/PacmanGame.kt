@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,8 +41,10 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
 import androidx.core.content.ContextCompat
+import java.util.ArrayDeque
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.random.Random
 
 enum class GhostType { CHASER, RANDOM, AMBUSH }
 
@@ -104,6 +107,9 @@ fun PacmanGame() {
     val map = remember { Array(rows) { IntArray(cols) { 2 } } }
     var mapVersion by remember { mutableIntStateOf(0) }
 
+    // Persistent layout for the random level
+    val randomWallLayout = remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
+
     var pacX by remember { mutableIntStateOf(cols / 2) }
     var pacY by remember { mutableIntStateOf(rows / 2) }
     var dirX by remember { mutableIntStateOf(0) }
@@ -147,6 +153,59 @@ fun PacmanGame() {
             .build()
     }
 
+    fun generateRandomLayout() {
+        val pacStartX = cols / 2
+        val pacStartY = rows / 2
+
+        fun isLayoutValid(walls: List<Pair<Int, Int>>): Boolean {
+            val wallSet = walls.toSet()
+            val visited = Array(rows) { BooleanArray(cols) }
+            val queue = ArrayDeque<Pair<Int, Int>>()
+            
+            queue.add(pacStartX to pacStartY)
+            visited[pacStartY][pacStartX] = true
+            
+            while (queue.isNotEmpty()) {
+                val (cx, cy) = queue.removeFirst()
+                for ((dx, dy) in listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)) {
+                    val nx = cx + dx
+                    val ny = cy + dy
+                    if (nx in 1 until cols - 1 && ny in 1 until rows - 1 && 
+                        !visited[ny][nx] && !wallSet.contains(nx to ny)) {
+                        visited[ny][nx] = true
+                        queue.add(nx to ny)
+                    }
+                }
+            }
+
+            for (y in 1 until rows - 1) {
+                for (x in 1 until cols - 1) {
+                    if (!wallSet.contains(x to y) && !visited[y][x]) return false
+                }
+            }
+            return true
+        }
+
+        var newWalls: List<Pair<Int, Int>>
+        do {
+            newWalls = mutableListOf()
+            for (y in 2 until rows - 2) {
+                for (x in 2 until cols / 2 + 1) {
+                    val isPacArea = abs(x - pacStartX) <= 1 && abs(y - pacStartY) <= 1
+                    val isGhostArea = (x <= 2 && y <= 2) || (x <= 2 && y >= rows - 3)
+                    if (!isPacArea && !isGhostArea && Random.nextFloat() < 0.25f) {
+                        (newWalls as MutableList).add(x to y)
+                        if (x != cols - 1 - x) {
+                            newWalls.add((cols - 1 - x) to y)
+                        }
+                    }
+                }
+            }
+        } while (!isLayoutValid(newWalls))
+        
+        randomWallLayout.value = newWalls
+    }
+
     fun resetMap(level: Int) {
         for (y in 0 until rows)
             for (x in 0 until cols)
@@ -168,6 +227,14 @@ fun PacmanGame() {
                 for (x in 9 until 13) map[12][x] = 1
                 for (y in 6 until 11) map[y][7] = 1
             }
+            3 -> {
+                // Apply the pre-generated random layout
+                randomWallLayout.value.forEach { (wx, wy) ->
+                    if (wy in 0 until rows && wx in 0 until cols) {
+                        map[wy][wx] = 1
+                    }
+                }
+            }
         }
 
         val powerPositions = listOf(
@@ -187,6 +254,9 @@ fun PacmanGame() {
     // Effect to reset map layout whenever index changes in level selector
     LaunchedEffect(selectedLevelIndex, showLevelSelector) {
         if (showLevelSelector) {
+            if (selectedLevelIndex == 3 && randomWallLayout.value.isEmpty()) {
+                generateRandomLayout()
+            }
             resetMap(selectedLevelIndex)
         }
     }
@@ -365,7 +435,7 @@ fun PacmanGame() {
                 Box(modifier = Modifier.fillMaxSize()) {
                     IconButton(
                         onClick = {
-                            selectedLevelIndex = (selectedLevelIndex + 2) % 3
+                            selectedLevelIndex = (selectedLevelIndex + 3) % 4
                         },
                         modifier = Modifier.align(Alignment.CenterStart).padding(8.dp)
                     ) {
@@ -373,11 +443,23 @@ fun PacmanGame() {
                     }
                     IconButton(
                         onClick = {
-                            selectedLevelIndex = (selectedLevelIndex + 1) % 3
+                            selectedLevelIndex = (selectedLevelIndex + 1) % 4
                         },
                         modifier = Modifier.align(Alignment.CenterEnd).padding(8.dp)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next Level", tint = scoreColor, modifier = Modifier.size(48.dp))
+                    }
+
+                    if (selectedLevelIndex == 3) {
+                        IconButton(
+                            onClick = { 
+                                generateRandomLayout()
+                                resetMap(3) 
+                            },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh Random Map", tint = scoreColor, modifier = Modifier.size(40.dp))
+                        }
                     }
                 }
             }
@@ -401,7 +483,7 @@ fun PacmanGame() {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "Score: $collectedDots", color = scoreColor, fontSize = 24.sp)
                     IconButton(onClick = { isPaused = true }) {
-                        Icon(Icons.Filled.Pause, contentDescription = "Pause", tint = scoreColor)
+                        Icon(imageVector = Icons.Filled.Pause, contentDescription = "Pause", tint = scoreColor)
                     }
                 }
             }
