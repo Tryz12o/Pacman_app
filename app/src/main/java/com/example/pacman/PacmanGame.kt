@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,8 +45,10 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.fragment.app.FragmentActivity
 import androidx.core.content.ContextCompat
+import java.util.ArrayDeque
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.random.Random
 
 enum class GhostType { CHASER, RANDOM, AMBUSH }
 
