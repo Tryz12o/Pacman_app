@@ -253,72 +253,74 @@ fun PacmanGame() {
     val dotColor = lerp(Color.White, Color.Black, themeFraction)
     val scoreColor = if (themeFraction > 0.5f) Color.Black else Color.White
 
+    // Functions for level management
+    fun resetMap(level: Int) {
+        for (y in 0 until rows)
+            for (x in 0 until cols)
+                map[y][x] = if (x == 0 || y == 0 || x == cols - 1 || y == rows - 1) 1 else 2
+
+        when (level) {
+            0 -> {
+                // Horizontal lines
+                for (x in 3 until 12) map[4][x] = 1
+                for (x in 3 until 12) map[12][x] = 1
+            }
+            1 -> {
+                // Vertical lines
+                for (y in 3 until 14) map[y][4] = 1
+                for (y in 3 until 14) map[y][10] = 1
+            }
+            2 -> {
+                // Complex layout
+                for (x in 2 until 6) map[4][x] = 1
+                for (x in 9 until 13) map[4][x] = 1
+                for (x in 2 until 6) map[12][x] = 1
+                for (x in 9 until 13) map[12][x] = 1
+                for (y in 6 until 11) map[y][7] = 1
+            }
+            3 -> {
+                // Random layout - same as default
+                for (x in 3 until 12) map[4][x] = 1
+                for (x in 3 until 12) map[12][x] = 1
+                for (y in 6 until 11) map[y][2] = 1
+                for (y in 6 until 11) map[y][12] = 1
+            }
+        }
+        
+        // Place four green power-pellets (bigger dots)
+        val powerPositions = listOf(
+            2 to 2,
+            cols - 3 to 2,
+            2 to rows - 3,
+            cols - 3 to rows - 3
+        )
+        for ((px, py) in powerPositions) {
+            if (py in 0 until rows && px in 0 until cols && map[py][px] != 1) {
+                map[py][px] = 3
+            }
+        }
+    }
+
+    fun fullReset(level: Int) {
+        collectedDots = 0
+        resetMap(level)
+        pacX = cols / 2; pacY = rows / 2
+        dirX = 0; dirY = 0
+        nextDirX = 0; nextDirY = 0
+        pacPowered = false
+        pacPowerUpTime = 0L
+        ghosts.replaceAll {
+            when (it.type) {
+                GhostType.CHASER -> Ghost(1, 1, it.color, it.type, 1, 1)
+                GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type, cols - 2, 1)
+                GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type, 1, rows - 2)
+            }
+        }
+        gameOver = false
+    }
+
     // --- Game loop ---
     LaunchedEffect(Unit) {
-        fun resetMap(level: Int) {
-            for (y in 0 until rows)
-                for (x in 0 until cols)
-                    map[y][x] = if (x == 0 || y == 0 || x == cols - 1 || y == rows - 1) 1 else 2
-
-            when (level) {
-                0 -> {
-                    // Horizontal lines
-                    for (x in 3 until 12) map[4][x] = 1
-                    for (x in 3 until 12) map[12][x] = 1
-                }
-                1 -> {
-                    // Vertical lines
-                    for (y in 3 until 14) map[y][4] = 1
-                    for (y in 3 until 14) map[y][10] = 1
-                }
-                2 -> {
-                    // Complex layout
-                    for (x in 2 until 6) map[4][x] = 1
-                    for (x in 9 until 13) map[4][x] = 1
-                    for (x in 2 until 6) map[12][x] = 1
-                    for (x in 9 until 13) map[12][x] = 1
-                    for (y in 6 until 11) map[y][7] = 1
-                }
-                3 -> {
-                    // Random layout - same as default
-                    for (x in 3 until 12) map[4][x] = 1
-                    for (x in 3 until 12) map[12][x] = 1
-                    for (y in 6 until 11) map[y][2] = 1
-                    for (y in 6 until 11) map[y][12] = 1
-                }
-            }
-            
-            // Place four green power-pellets (bigger dots)
-            val powerPositions = listOf(
-                2 to 2,
-                cols - 3 to 2,
-                2 to rows - 3,
-                cols - 3 to rows - 3
-            )
-            for ((px, py) in powerPositions) {
-                if (py in 0 until rows && px in 0 until cols && map[py][px] != 1) {
-                    map[py][px] = 3
-                }
-            }
-        }
-
-        fun fullReset(level: Int) {
-            collectedDots = 0
-            resetMap(level)
-            pacX = cols / 2; pacY = rows / 2
-            dirX = 0; dirY = 0
-            nextDirX = 0; nextDirY = 0
-            pacPowered = false
-            pacPowerUpTime = 0L
-            ghosts.replaceAll {
-                when (it.type) {
-                    GhostType.CHASER -> Ghost(1, 1, it.color, it.type, 1, 1)
-                    GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type, cols - 2, 1)
-                    GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type, 1, rows - 2)
-                }
-            }
-            gameOver = false
-        }
 
         resetMap(selectedLevelIndex)
         pacX = cols / 2; pacY = rows / 2
