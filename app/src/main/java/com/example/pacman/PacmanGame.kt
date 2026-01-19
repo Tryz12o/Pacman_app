@@ -97,6 +97,8 @@ fun PacmanGame() {
     var difficultyLevel by remember { mutableStateOf(DifficultyLevel.NORMAL) }
     var highScore by remember { mutableIntStateOf(0) }
     var showStats by remember { mutableStateOf(false) }
+    var showLevelSelector by remember { mutableStateOf(false) }
+    var selectedLevelIndex by remember { mutableIntStateOf(0) }
 
     val context = LocalContext.current
     val gameStateManager = remember { GameStateManager(context) }
@@ -253,18 +255,40 @@ fun PacmanGame() {
 
     // --- Game loop ---
     LaunchedEffect(Unit) {
-        fun resetMap() {
+        fun resetMap(level: Int) {
             for (y in 0 until rows)
                 for (x in 0 until cols)
                     map[y][x] = if (x == 0 || y == 0 || x == cols - 1 || y == rows - 1) 1 else 2
 
-            // Add walls for maze structure (more challenging layout)
-            for (x in 3 until 12) map[4][x] = 1
-            for (x in 3 until 12) map[12][x] = 1
-            for (y in 6 until 11) map[y][2] = 1
-            for (y in 6 until 11) map[y][12] = 1
+            when (level) {
+                0 -> {
+                    // Horizontal lines
+                    for (x in 3 until 12) map[4][x] = 1
+                    for (x in 3 until 12) map[12][x] = 1
+                }
+                1 -> {
+                    // Vertical lines
+                    for (y in 3 until 14) map[y][4] = 1
+                    for (y in 3 until 14) map[y][10] = 1
+                }
+                2 -> {
+                    // Complex layout
+                    for (x in 2 until 6) map[4][x] = 1
+                    for (x in 9 until 13) map[4][x] = 1
+                    for (x in 2 until 6) map[12][x] = 1
+                    for (x in 9 until 13) map[12][x] = 1
+                    for (y in 6 until 11) map[y][7] = 1
+                }
+                3 -> {
+                    // Random layout - same as default
+                    for (x in 3 until 12) map[4][x] = 1
+                    for (x in 3 until 12) map[12][x] = 1
+                    for (y in 6 until 11) map[y][2] = 1
+                    for (y in 6 until 11) map[y][12] = 1
+                }
+            }
             
-            // Place four green power-pellets (bigger dots) - more strategic positions
+            // Place four green power-pellets (bigger dots)
             val powerPositions = listOf(
                 2 to 2,
                 cols - 3 to 2,
@@ -278,7 +302,25 @@ fun PacmanGame() {
             }
         }
 
-        resetMap()
+        fun fullReset(level: Int) {
+            collectedDots = 0
+            resetMap(level)
+            pacX = cols / 2; pacY = rows / 2
+            dirX = 0; dirY = 0
+            nextDirX = 0; nextDirY = 0
+            pacPowered = false
+            pacPowerUpTime = 0L
+            ghosts.replaceAll {
+                when (it.type) {
+                    GhostType.CHASER -> Ghost(1, 1, it.color, it.type, 1, 1)
+                    GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type, cols - 2, 1)
+                    GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type, 1, rows - 2)
+                }
+            }
+            gameOver = false
+        }
+
+        resetMap(selectedLevelIndex)
         pacX = cols / 2; pacY = rows / 2
         dirX = 0; dirY = 0
         nextDirX = 0; nextDirY = 0
@@ -294,7 +336,7 @@ fun PacmanGame() {
                     }
                     
                     collectedDots = 0
-                    resetMap()
+                    resetMap(selectedLevelIndex)
                     pacX = cols / 2; pacY = rows / 2
                     dirX = 0; dirY = 0
                     nextDirX = 0; nextDirY = 0
@@ -502,7 +544,64 @@ fun PacmanGame() {
                         .background(Color.Black.copy(alpha = 0.8f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (showStats) {
+                    if (showLevelSelector) {
+                        Column(
+                            modifier = Modifier
+                                .background(fixedWallColor, shape = RoundedCornerShape(16.dp))
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Select Level", color = fixedScoreColor, fontSize = 24.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Text(
+                                when (selectedLevelIndex) {
+                                    0 -> "Level 1: Horizontal"
+                                    1 -> "Level 2: Vertical"
+                                    2 -> "Level 3: Complex"
+                                    3 -> "Level 4: Random"
+                                    else -> "Level ${selectedLevelIndex + 1}"
+                                },
+                                color = fixedScoreColor,
+                                fontSize = 18.sp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(onClick = {
+                                    selectedLevelIndex = (selectedLevelIndex - 1 + 4) % 4
+                                }) {
+                                    Text("< Prev")
+                                }
+                                Text(
+                                    "${selectedLevelIndex + 1}/4",
+                                    color = fixedScoreColor,
+                                    fontSize = 16.sp
+                                )
+                                Button(onClick = {
+                                    selectedLevelIndex = (selectedLevelIndex + 1) % 4
+                                }) {
+                                    Text("Next >")
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = {
+                                showLevelSelector = false
+                                isPaused = true
+                                fullReset(selectedLevelIndex)
+                            }) {
+                                Text("Start Level")
+                            }
+                            Button(onClick = { showLevelSelector = false }) {
+                                Text("Back")
+                            }
+                        }
+                    } else if (showStats) {
                         Column(
                             modifier = Modifier
                                 .background(fixedWallColor, shape = RoundedCornerShape(16.dp))
@@ -626,6 +725,10 @@ fun PacmanGame() {
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(onClick = { isResuming = true }) {
                                 Text("Resume")
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = { showLevelSelector = true; isPaused = true }) {
+                                Text("Levels")
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(onClick = { showSettings = true }) {
