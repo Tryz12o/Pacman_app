@@ -364,7 +364,7 @@ fun PacmanGame() {
 
     LaunchedEffect(Unit) {
         fullReset(selectedLevelIndex)
-        var lastGridUpdate = 0L
+        var lastGridUpdate = System.currentTimeMillis()
         
         while (true) {
             if (!isPaused && !showLevelSelector) {
