@@ -166,16 +166,16 @@ fun PacmanGame() {
             val wallSet = walls.toSet()
             val visited = Array(rows) { BooleanArray(cols) }
             val queue = ArrayDeque<Pair<Int, Int>>()
-            
+
             queue.add(pacStartX to pacStartY)
             visited[pacStartY][pacStartX] = true
-            
+
             while (queue.isNotEmpty()) {
                 val (cx, cy) = queue.removeFirst()
                 for ((dx, dy) in listOf(0 to 1, 0 to -1, 1 to 0, -1 to 0)) {
                     val nx = cx + dx
                     val ny = cy + dy
-                    if (nx in 1 until cols - 1 && ny in 1 until rows - 1 && 
+                    if (nx in 1 until cols - 1 && ny in 1 until rows - 1 &&
                         !visited[ny][nx] && !wallSet.contains(nx to ny)) {
                         visited[ny][nx] = true
                         queue.add(nx to ny)
@@ -207,7 +207,7 @@ fun PacmanGame() {
                 }
             }
         } while (!isLayoutValid(newWalls))
-        
+
         randomWallLayout.value = newWalls
     }
 
@@ -368,7 +368,7 @@ fun PacmanGame() {
 
                 // Only allow direction changes when near grid center (for grid-aligned movement)
                 val atGridCenter = abs(pacX - pacX.toInt() - 0.5f) < 0.3f && abs(pacY - pacY.toInt() - 0.5f) < 0.3f
-                
+
                 // Try to change direction if requested and at grid center
                 if ((nextDirX != 0f || nextDirY != 0f) && atGridCenter) {
                     // Check if the new direction is valid
@@ -387,20 +387,20 @@ fun PacmanGame() {
                 if (dirX != 0f || dirY != 0f) {
                     val nx = pacX + dirX * MOVEMENT_SPEED
                     val ny = pacY + dirY * MOVEMENT_SPEED
-                    
+
                     // Check collision more carefully - check both current and target cells
                     val currentGridX = pacX.toInt()
                     val currentGridY = pacY.toInt()
                     val targetGridX = nx.toInt()
                     val targetGridY = ny.toInt()
-                    
+
                     var canMove = true
-                    
+
                     // Check if target grid cell is valid
                     if (targetGridY !in 0 until rows || targetGridX !in 0 until cols || map[targetGridY][targetGridX] == 1) {
                         canMove = false
                     }
-                    
+
                     // Additional check: when crossing cell boundary, ensure we're not hitting a wall
                     if (canMove && (currentGridX != targetGridX || currentGridY != targetGridY)) {
                         // Only do the extra check if we're actually crossing into a different cell
@@ -409,14 +409,14 @@ fun PacmanGame() {
                         } else if (dirX < 0 && targetGridX < currentGridX) { // Moving left into new cell
                             if (targetGridX < 0 || map[currentGridY][targetGridX] == 1) canMove = false
                         }
-                        
+
                         if (dirY > 0 && targetGridY > currentGridY) { // Moving down into new cell
                             if (targetGridY >= rows || map[targetGridY][currentGridX] == 1) canMove = false
                         } else if (dirY < 0 && targetGridY < currentGridY) { // Moving up into new cell
                             if (targetGridY < 0 || map[targetGridY][currentGridX] == 1) canMove = false
                         }
                     }
-                    
+
                     if (canMove) {
                         pacX = nx
                         pacY = ny
@@ -492,7 +492,7 @@ fun PacmanGame() {
                         // Access mapVersion to ensure Canvas redraws when map content changes
                         @Suppress("UNUSED_EXPRESSION")
                         mapVersion
-                        
+
                         val tileWidth = size.width / cols
                         val tileHeight = size.height / rows
                         val tileSize = min(tileWidth, tileHeight)
@@ -529,9 +529,9 @@ fun PacmanGame() {
 
                     if (selectedLevelIndex == 3) {
                         IconButton(
-                            onClick = { 
+                            onClick = {
                                 generateRandomLayout()
-                                resetMap(3) 
+                                resetMap(3)
                             },
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
                         ) {
@@ -564,7 +564,7 @@ fun PacmanGame() {
                             Icon(imageVector = Icons.Filled.Pause, contentDescription = "Pause", tint = scoreColor)
                         }
                     }
-                    
+
                     if (pacPowerTimeLeft > 0) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 0.dp)) { //Powerup timer vertical height 'padding(top = X.dp)'
                             Canvas(modifier = Modifier.size(20.dp)) {
@@ -666,7 +666,7 @@ fun PacmanGame() {
 private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pacY: Float, pacDirX: Float, pacDirY: Float, ghosts: List<Ghost>) {
     // Only change direction when at grid center (for cleaner pathfinding)
     val atGridCenter = abs(ghost.x - ghost.x.toInt() - 0.5f) < 0.15f && abs(ghost.y - ghost.y.toInt() - 0.5f) < 0.15f
-    
+
     if (atGridCenter || (ghost.dirX == 0f && ghost.dirY == 0f)) {
         val dirs = listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
         var possible = dirs.filter { (dx, dy) ->
@@ -680,28 +680,28 @@ private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pac
             ghost.dirY = 0f
             return
         }
-        
+
         val best = when (ghost.type) {
-            GhostType.CHASER -> possible.minByOrNull { (dx, dy) -> 
+            GhostType.CHASER -> possible.minByOrNull { (dx, dy) ->
                 val nx = ghost.x + dx; val ny = ghost.y + dy
                 (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
             }
             GhostType.AMBUSH -> {
                 val tx = pacX + pacDirX * 4
                 val ty = pacY + pacDirY * 4
-                possible.minByOrNull { (dx, dy) -> 
+                possible.minByOrNull { (dx, dy) ->
                     val nx = ghost.x + dx; val ny = ghost.y + dy
                     (tx - nx) * (tx - nx) + (ty - ny) * (ty - ny)
                 }
             }
             GhostType.RANDOM -> {
                 val d = abs(ghost.x - pacX) + abs(ghost.y - pacY)
-                if (d > 8) possible.minByOrNull { (dx, dy) -> 
+                if (d > 8) possible.minByOrNull { (dx, dy) ->
                     val nx = ghost.x + dx; val ny = ghost.y + dy
                     (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
-                } else { 
+                } else {
                     val cx = 1f; val cy = map.lastIndex - 1f
-                    possible.minByOrNull { (dx, dy) -> 
+                    possible.minByOrNull { (dx, dy) ->
                         val nx = ghost.x + dx; val ny = ghost.y + dy
                         (cx - nx) * (cx - nx) + (cy - ny) * (cy - ny)
                     }
@@ -711,7 +711,7 @@ private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pac
         ghost.dirX = best.first
         ghost.dirY = best.second
     }
-    
+
     // Move smoothly in current direction
     val nx = ghost.x + ghost.dirX * MOVEMENT_SPEED
     val ny = ghost.y + ghost.dirY * MOVEMENT_SPEED
