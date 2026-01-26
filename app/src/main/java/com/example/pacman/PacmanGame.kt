@@ -50,6 +50,10 @@ enum class GhostType { CHASER, RANDOM, AMBUSH }
 
 enum class AppTheme { SYSTEM, LIGHT, DARK }
 
+// Game timing constants
+private const val GRID_UPDATE_INTERVAL_MS = 200L  // Game logic updates every 200ms
+private const val RENDER_FRAME_DELAY_MS = 16L     // ~60 FPS rendering
+
 data class Ghost(
     var x: Int,
     var y: Int,
@@ -361,14 +365,13 @@ fun PacmanGame() {
     LaunchedEffect(Unit) {
         fullReset(selectedLevelIndex)
         var lastGridUpdate = 0L
-        val gridUpdateInterval = 200L  // Grid updates every 200ms (game speed)
         
         while (true) {
             if (!isPaused && !showLevelSelector) {
                 val currentTime = System.currentTimeMillis()
                 
                 // Grid-based logic updates (every 200ms)
-                if (currentTime - lastGridUpdate >= gridUpdateInterval) {
+                if (currentTime - lastGridUpdate >= GRID_UPDATE_INTERVAL_MS) {
                     lastGridUpdate = currentTime
                     
                     if (gameOver) {
@@ -423,9 +426,9 @@ fun PacmanGame() {
                     }
                 }
                 
-                // Smooth interpolation (60 FPS)
-                val timeSinceLastUpdate = (currentTime - lastGridUpdate).coerceAtMost(gridUpdateInterval)
-                val interpolationFactor = (timeSinceLastUpdate.toFloat() / gridUpdateInterval).coerceIn(0f, 1f)
+                // Smooth interpolation (60 FPS) - only when game is active
+                val timeSinceLastUpdate = (currentTime - lastGridUpdate).coerceAtMost(GRID_UPDATE_INTERVAL_MS)
+                val interpolationFactor = (timeSinceLastUpdate.toFloat() / GRID_UPDATE_INTERVAL_MS).coerceIn(0f, 1f)
                 
                 // Interpolate Pacman position
                 pacRenderX = pacX - dirX * (1f - interpolationFactor)
@@ -439,7 +442,7 @@ fun PacmanGame() {
                     }
                 }
             }
-            delay(16)  // ~60 FPS
+            delay(RENDER_FRAME_DELAY_MS)
         }
     }
 
