@@ -665,16 +665,14 @@ fun PacmanGame() {
 
 private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pacY: Float, pacDirX: Float, pacDirY: Float, ghosts: List<Ghost>) {
     // Only change direction when at grid center (for cleaner pathfinding)
-    val atGridCenter = abs(ghost.x - ghost.x.toInt() - 0.5f) < 0.2f && abs(ghost.y - ghost.y.toInt() - 0.5f) < 0.2f
+    val atGridCenter = abs(ghost.x - ghost.x.toInt() - 0.5f) < 0.15f && abs(ghost.y - ghost.y.toInt() - 0.5f) < 0.15f
     
     if (atGridCenter || (ghost.dirX == 0f && ghost.dirY == 0f)) {
         val dirs = listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
         var possible = dirs.filter { (dx, dy) ->
-            // Check if moving in this direction would be valid
-            // Use same logic as actual movement - check the adjacent cell
-            val targetX = ghost.x.toInt() + dx.toInt()
-            val targetY = ghost.y.toInt() + dy.toInt()
-            targetY in map.indices && targetX in map[0].indices && map[targetY][targetX] != 1
+            val nx = (ghost.x + dx).toInt()
+            val ny = (ghost.y + dy).toInt()
+            nx in map[0].indices && ny in map.indices && map[ny][nx] != 1
         }
         if (possible.size > 1) possible = possible.filterNot { (dx, dy) -> dx == -ghost.dirX && dy == -ghost.dirY }
         if (possible.isEmpty()) {
@@ -712,54 +710,16 @@ private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pac
         } ?: possible.random()
         ghost.dirX = best.first
         ghost.dirY = best.second
-        
-        // Align to grid center when changing direction
-        ghost.x = ghost.x.toInt() + 0.5f
-        ghost.y = ghost.y.toInt() + 0.5f
     }
     
-    // Move smoothly in current direction with proper wall collision
-    if (ghost.dirX != 0f || ghost.dirY != 0f) {
-        val nx = ghost.x + ghost.dirX * MOVEMENT_SPEED
-        val ny = ghost.y + ghost.dirY * MOVEMENT_SPEED
-        
-        val currentGridX = ghost.x.toInt()
-        val currentGridY = ghost.y.toInt()
-        val targetGridX = nx.toInt()
-        val targetGridY = ny.toInt()
-        
-        var canMove = true
-        
-        // Check if target grid cell is valid
-        if (targetGridY !in map.indices || targetGridX !in map[0].indices || map[targetGridY][targetGridX] == 1) {
-            canMove = false
-        }
-        
-        // Additional check: when crossing cell boundary, ensure we're not hitting a wall
-        if (canMove && (currentGridX != targetGridX || currentGridY != targetGridY)) {
-            if (ghost.dirX > 0 && targetGridX > currentGridX) {
-                if (targetGridX >= map[0].size || map[currentGridY][targetGridX] == 1) canMove = false
-            } else if (ghost.dirX < 0 && targetGridX < currentGridX) {
-                if (targetGridX < 0 || map[currentGridY][targetGridX] == 1) canMove = false
-            }
-            
-            if (ghost.dirY > 0 && targetGridY > currentGridY) {
-                if (targetGridY >= map.size || map[targetGridY][currentGridX] == 1) canMove = false
-            } else if (ghost.dirY < 0 && targetGridY < currentGridY) {
-                if (targetGridY < 0 || map[targetGridY][currentGridX] == 1) canMove = false
-            }
-        }
-        
-        if (canMove) {
-            ghost.x = nx
-            ghost.y = ny
-        } else {
-            // Stop at grid center if hitting a wall
-            ghost.x = currentGridX + 0.5f
-            ghost.y = currentGridY + 0.5f
-            ghost.dirX = 0f
-            ghost.dirY = 0f
-        }
+    // Move smoothly in current direction
+    val nx = ghost.x + ghost.dirX * MOVEMENT_SPEED
+    val ny = ghost.y + ghost.dirY * MOVEMENT_SPEED
+    val gridNX = nx.toInt()
+    val gridNY = ny.toInt()
+    if (gridNY in map.indices && gridNX in map[0].indices && map[gridNY][gridNX] != 1) {
+        ghost.x = nx
+        ghost.y = ny
     }
 }
 
