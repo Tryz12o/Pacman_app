@@ -670,9 +670,11 @@ private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pac
     if (atGridCenter || (ghost.dirX == 0f && ghost.dirY == 0f)) {
         val dirs = listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
         var possible = dirs.filter { (dx, dy) ->
-            val checkX = (ghost.x + dx * 0.6f).toInt()
-            val checkY = (ghost.y + dy * 0.6f).toInt()
-            checkX in map[0].indices && checkY in map.indices && map[checkY][checkX] != 1
+            // Check if moving in this direction would be valid
+            // Use same logic as actual movement - check the adjacent cell
+            val targetX = ghost.x.toInt() + dx.toInt()
+            val targetY = ghost.y.toInt() + dy.toInt()
+            targetY in map.indices && targetX in map[0].indices && map[targetY][targetX] != 1
         }
         if (possible.size > 1) possible = possible.filterNot { (dx, dy) -> dx == -ghost.dirX && dy == -ghost.dirY }
         if (possible.isEmpty()) {
