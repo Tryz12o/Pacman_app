@@ -366,25 +366,71 @@ fun PacmanGame() {
                     fullReset(selectedLevelIndex)
                 }
 
-                // Try to change direction if requested
-                val tryNextX = pacX + nextDirX * MOVEMENT_SPEED
-                val tryNextY = pacY + nextDirY * MOVEMENT_SPEED
-                if (nextDirX != 0f || nextDirY != 0f) {
-                    val gridX = tryNextX.toInt()
-                    val gridY = tryNextY.toInt()
-                    if (gridY in 0 until rows && gridX in 0 until cols && map[gridY][gridX] != 1) {
+                // Only allow direction changes when near grid center (for grid-aligned movement)
+                val atGridCenter = abs(pacX - pacX.toInt() - 0.5f) < 0.3f && abs(pacY - pacY.toInt() - 0.5f) < 0.3f
+                
+                // Try to change direction if requested and at grid center
+                if ((nextDirX != 0f || nextDirY != 0f) && atGridCenter) {
+                    // Check if the new direction is valid
+                    val checkX = (pacX + nextDirX * 0.6f).toInt()
+                    val checkY = (pacY + nextDirY * 0.6f).toInt()
+                    if (checkY in 0 until rows && checkX in 0 until cols && map[checkY][checkX] != 1) {
                         dirX = nextDirX; dirY = nextDirY
                         nextDirX = 0f; nextDirY = 0f
+                        // Align to grid center when changing direction
+                        pacX = pacX.toInt() + 0.5f
+                        pacY = pacY.toInt() + 0.5f
                     }
                 }
 
-                // Move Pacman
-                val nx = pacX + dirX * MOVEMENT_SPEED
-                val ny = pacY + dirY * MOVEMENT_SPEED
-                val gridNX = nx.toInt()
-                val gridNY = ny.toInt()
-                if (gridNY in 0 until rows && gridNX in 0 until cols && map[gridNY][gridNX] != 1) {
-                    pacX = nx; pacY = ny
+                // Move Pacman with proper wall collision
+                if (dirX != 0f || dirY != 0f) {
+                    val nx = pacX + dirX * MOVEMENT_SPEED
+                    val ny = pacY + dirY * MOVEMENT_SPEED
+                    
+                    // Check collision more carefully - check both current and target cells
+                    val currentGridX = pacX.toInt()
+                    val currentGridY = pacY.toInt()
+                    val targetGridX = nx.toInt()
+                    val targetGridY = ny.toInt()
+                    
+                    var canMove = true
+                    
+                    // Check if target grid cell is valid
+                    if (targetGridY !in 0 until rows || targetGridX !in 0 until cols || map[targetGridY][targetGridX] == 1) {
+                        canMove = false
+                    }
+                    
+                    // Check if we're crossing into a wall
+                    if (canMove && (currentGridX != targetGridX || currentGridY != targetGridY)) {
+                        // Moving to a new grid cell, make sure path is clear
+                        if (dirX > 0) { // Moving right
+                            val checkX = (pacX + 0.4f).toInt() + 1
+                            if (checkX < cols && map[currentGridY][checkX] == 1) canMove = false
+                        } else if (dirX < 0) { // Moving left
+                            val checkX = (pacX - 0.4f).toInt()
+                            if (checkX >= 0 && map[currentGridY][checkX] == 1) canMove = false
+                        }
+                        
+                        if (dirY > 0) { // Moving down
+                            val checkY = (pacY + 0.4f).toInt() + 1
+                            if (checkY < rows && map[checkY][currentGridX] == 1) canMove = false
+                        } else if (dirY < 0) { // Moving up
+                            val checkY = (pacY - 0.4f).toInt()
+                            if (checkY >= 0 && map[checkY][currentGridX] == 1) canMove = false
+                        }
+                    }
+                    
+                    if (canMove) {
+                        pacX = nx
+                        pacY = ny
+                    } else {
+                        // Stop at grid center if hitting a wall
+                        if (dirX != 0f) pacX = currentGridX + 0.5f
+                        if (dirY != 0f) pacY = currentGridY + 0.5f
+                        dirX = 0f
+                        dirY = 0f
+                    }
                 }
 
                 // Check for dot/power-up collection at current grid position
@@ -623,17 +669,21 @@ fun PacmanGame() {
 
 private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pacY: Float, pacDirX: Float, pacDirY: Float, ghosts: List<Ghost>) {
     // Only change direction when at grid center (for cleaner pathfinding)
-    val atGridCenter = abs(ghost.x - ghost.x.toInt() - 0.5f) < 0.1f && abs(ghost.y - ghost.y.toInt() - 0.5f) < 0.1f
+    val atGridCenter = abs(ghost.x - ghost.x.toInt() - 0.5f) < 0.2f && abs(ghost.y - ghost.y.toInt() - 0.5f) < 0.2f
     
     if (atGridCenter || (ghost.dirX == 0f && ghost.dirY == 0f)) {
         val dirs = listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
         var possible = dirs.filter { (dx, dy) ->
-            val nx = (ghost.x + dx).toInt()
-            val ny = (ghost.y + dy).toInt()
-            nx in map[0].indices && ny in map.indices && map[ny][nx] != 1
+            val checkX = (ghost.x + dx * 0.6f).toInt()
+            val checkY = (ghost.y + dy * 0.6f).toInt()
+            checkX in map[0].indices && checkY in map.indices && map[checkY][checkX] != 1
         }
         if (possible.size > 1) possible = possible.filterNot { (dx, dy) -> dx == -ghost.dirX && dy == -ghost.dirY }
-        if (possible.isEmpty()) return
+        if (possible.isEmpty()) {
+            ghost.dirX = 0f
+            ghost.dirY = 0f
+            return
+        }
         
         val best = when (ghost.type) {
             GhostType.CHASER -> possible.minByOrNull { (dx, dy) -> 
@@ -664,16 +714,58 @@ private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pac
         } ?: possible.random()
         ghost.dirX = best.first
         ghost.dirY = best.second
+        
+        // Align to grid center when changing direction
+        ghost.x = ghost.x.toInt() + 0.5f
+        ghost.y = ghost.y.toInt() + 0.5f
     }
     
-    // Move smoothly in current direction
-    val nx = ghost.x + ghost.dirX * MOVEMENT_SPEED
-    val ny = ghost.y + ghost.dirY * MOVEMENT_SPEED
-    val gridNX = nx.toInt()
-    val gridNY = ny.toInt()
-    if (gridNY in map.indices && gridNX in map[0].indices && map[gridNY][gridNX] != 1) {
-        ghost.x = nx
-        ghost.y = ny
+    // Move smoothly in current direction with proper wall collision
+    if (ghost.dirX != 0f || ghost.dirY != 0f) {
+        val nx = ghost.x + ghost.dirX * MOVEMENT_SPEED
+        val ny = ghost.y + ghost.dirY * MOVEMENT_SPEED
+        
+        val currentGridX = ghost.x.toInt()
+        val currentGridY = ghost.y.toInt()
+        val targetGridX = nx.toInt()
+        val targetGridY = ny.toInt()
+        
+        var canMove = true
+        
+        // Check if target grid cell is valid
+        if (targetGridY !in map.indices || targetGridX !in map[0].indices || map[targetGridY][targetGridX] == 1) {
+            canMove = false
+        }
+        
+        // Check if we're crossing into a wall
+        if (canMove && (currentGridX != targetGridX || currentGridY != targetGridY)) {
+            if (ghost.dirX > 0) {
+                val checkX = (ghost.x + 0.4f).toInt() + 1
+                if (checkX < map[0].size && map[currentGridY][checkX] == 1) canMove = false
+            } else if (ghost.dirX < 0) {
+                val checkX = (ghost.x - 0.4f).toInt()
+                if (checkX >= 0 && map[currentGridY][checkX] == 1) canMove = false
+            }
+            
+            if (ghost.dirY > 0) {
+                val checkY = (ghost.y + 0.4f).toInt() + 1
+                if (checkY < map.size && map[checkY][currentGridX] == 1) canMove = false
+            } else if (ghost.dirY < 0) {
+                val checkY = (ghost.y - 0.4f).toInt()
+                if (checkY >= 0 && map[checkY][currentGridX] == 1) canMove = false
+            }
+        }
+        
+        if (canMove) {
+            ghost.x = nx
+            ghost.y = ny
+        } else {
+            // Stop at grid center if hitting a wall
+            ghost.x = currentGridX + 0.5f
+            ghost.y = currentGridY + 0.5f
+            ghost.dirX = 0f
+            ghost.dirY = 0f
+        }
     }
 }
 
