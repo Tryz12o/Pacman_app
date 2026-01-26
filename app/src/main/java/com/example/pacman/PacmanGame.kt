@@ -805,13 +805,13 @@ private fun DrawScope.drawMazeGrid(map: Array<IntArray>, tile: Float, ox: Float,
 }
 
 private fun DrawScope.drawPacmanClassic(x: Float, y: Float, tile: Float, ox: Float, oy: Float, open: Boolean, color: Color) {
-    val cx = ox + (x + 0.5f) * tile; val cy = oy + (y + 0.5f) * tile; val r = tile * 0.4f
+    val cx = ox + x * tile; val cy = oy + y * tile; val r = tile * 0.4f
     if (open) drawArc(color, 30f, 300f, true, Offset(cx - r, cy - r), Size(r * 2, r * 2))
     else drawCircle(color, r, Offset(cx, cy))
 }
 
 private fun DrawScope.drawGhostClassic(g: Ghost, tile: Float, ox: Float, oy: Float, eye: Color) {
-    val cx = ox + (g.x + 0.5f) * tile; val cy = oy + (g.y + 0.5f) * tile; val r = tile * 0.4f
+    val cx = ox + g.x * tile; val cy = oy + g.y * tile; val r = tile * 0.4f
     drawCircle(g.color, r, Offset(cx, cy - r / 4))
     for (i in 0..3) { val lx = cx - r + i * r * 0.66f; drawCircle(g.color, r / 4, Offset(lx, cy)) }
     drawCircle(eye, r / 5, Offset(cx - r / 4, cy - r / 4)); drawCircle(eye, r / 5, Offset(cx + r / 4, cy - r / 4))
