@@ -115,8 +115,8 @@ fun PacmanGame() {
     // Persistent layout for the random level
     val randomWallLayout = remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
 
-    var pacX by remember { mutableFloatStateOf(cols / 2f) }
-    var pacY by remember { mutableFloatStateOf(rows / 2f) }
+    var pacX by remember { mutableFloatStateOf(cols / 2f + 0.5f) }
+    var pacY by remember { mutableFloatStateOf(rows / 2f + 0.5f) }
     var dirX by remember { mutableFloatStateOf(0f) }
     var dirY by remember { mutableFloatStateOf(0f) }
     var nextDirX by remember { mutableFloatStateOf(0f) }
@@ -124,9 +124,9 @@ fun PacmanGame() {
 
     val ghosts = remember {
         mutableStateListOf(
-            Ghost(1f, 1f, Color.Red, GhostType.CHASER, 1f, 1f),
-            Ghost(cols - 2f, 1f, Color.Cyan, GhostType.RANDOM, cols - 2f, 1f),
-            Ghost(1f, rows - 2f, Color.Magenta, GhostType.AMBUSH, 1f, rows - 2f)
+            Ghost(1.5f, 1.5f, Color.Red, GhostType.CHASER, 1.5f, 1.5f),
+            Ghost(cols - 1.5f, 1.5f, Color.Cyan, GhostType.RANDOM, cols - 1.5f, 1.5f),
+            Ghost(1.5f, rows - 1.5f, Color.Magenta, GhostType.AMBUSH, 1.5f, rows - 1.5f)
         )
     }
 
@@ -269,16 +269,16 @@ fun PacmanGame() {
     fun fullReset(level: Int) {
         collectedDots = 0
         resetMap(level)
-        pacX = cols / 2f; pacY = rows / 2f
+        pacX = cols / 2f + 0.5f; pacY = rows / 2f + 0.5f
         dirX = 0f; dirY = 0f
         nextDirX = 0f; nextDirY = 0f
         pacPowerTimeLeft = 0L
         pacPowered = false
         ghosts.replaceAll {
             when (it.type) {
-                GhostType.CHASER -> Ghost(1f, 1f, it.color, it.type, 1f, 1f)
-                GhostType.RANDOM -> Ghost(cols - 2f, 1f, it.color, it.type, cols - 2f, 1f)
-                GhostType.AMBUSH -> Ghost(1f, rows - 2f, it.color, it.type, 1f, rows - 2f)
+                GhostType.CHASER -> Ghost(1.5f, 1.5f, it.color, it.type, 1.5f, 1.5f)
+                GhostType.RANDOM -> Ghost(cols - 1.5f, 1.5f, it.color, it.type, cols - 1.5f, 1.5f)
+                GhostType.AMBUSH -> Ghost(1.5f, rows - 1.5f, it.color, it.type, 1.5f, rows - 1.5f)
             }
         }
         gameOver = false
