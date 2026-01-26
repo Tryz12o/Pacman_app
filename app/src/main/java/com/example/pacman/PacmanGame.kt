@@ -401,23 +401,19 @@ fun PacmanGame() {
                         canMove = false
                     }
                     
-                    // Check if we're crossing into a wall
+                    // Additional check: when crossing cell boundary, ensure we're not hitting a wall
                     if (canMove && (currentGridX != targetGridX || currentGridY != targetGridY)) {
-                        // Moving to a new grid cell, make sure path is clear
-                        if (dirX > 0) { // Moving right
-                            val checkX = (pacX + 0.4f).toInt() + 1
-                            if (checkX < cols && map[currentGridY][checkX] == 1) canMove = false
-                        } else if (dirX < 0) { // Moving left
-                            val checkX = (pacX - 0.4f).toInt()
-                            if (checkX >= 0 && map[currentGridY][checkX] == 1) canMove = false
+                        // Only do the extra check if we're actually crossing into a different cell
+                        if (dirX > 0 && targetGridX > currentGridX) { // Moving right into new cell
+                            if (targetGridX >= cols || map[currentGridY][targetGridX] == 1) canMove = false
+                        } else if (dirX < 0 && targetGridX < currentGridX) { // Moving left into new cell
+                            if (targetGridX < 0 || map[currentGridY][targetGridX] == 1) canMove = false
                         }
                         
-                        if (dirY > 0) { // Moving down
-                            val checkY = (pacY + 0.4f).toInt() + 1
-                            if (checkY < rows && map[checkY][currentGridX] == 1) canMove = false
-                        } else if (dirY < 0) { // Moving up
-                            val checkY = (pacY - 0.4f).toInt()
-                            if (checkY >= 0 && map[checkY][currentGridX] == 1) canMove = false
+                        if (dirY > 0 && targetGridY > currentGridY) { // Moving down into new cell
+                            if (targetGridY >= rows || map[targetGridY][currentGridX] == 1) canMove = false
+                        } else if (dirY < 0 && targetGridY < currentGridY) { // Moving up into new cell
+                            if (targetGridY < 0 || map[targetGridY][currentGridX] == 1) canMove = false
                         }
                     }
                     
@@ -737,22 +733,18 @@ private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pac
             canMove = false
         }
         
-        // Check if we're crossing into a wall
+        // Additional check: when crossing cell boundary, ensure we're not hitting a wall
         if (canMove && (currentGridX != targetGridX || currentGridY != targetGridY)) {
-            if (ghost.dirX > 0) {
-                val checkX = (ghost.x + 0.4f).toInt() + 1
-                if (checkX < map[0].size && map[currentGridY][checkX] == 1) canMove = false
-            } else if (ghost.dirX < 0) {
-                val checkX = (ghost.x - 0.4f).toInt()
-                if (checkX >= 0 && map[currentGridY][checkX] == 1) canMove = false
+            if (ghost.dirX > 0 && targetGridX > currentGridX) {
+                if (targetGridX >= map[0].size || map[currentGridY][targetGridX] == 1) canMove = false
+            } else if (ghost.dirX < 0 && targetGridX < currentGridX) {
+                if (targetGridX < 0 || map[currentGridY][targetGridX] == 1) canMove = false
             }
             
-            if (ghost.dirY > 0) {
-                val checkY = (ghost.y + 0.4f).toInt() + 1
-                if (checkY < map.size && map[checkY][currentGridX] == 1) canMove = false
-            } else if (ghost.dirY < 0) {
-                val checkY = (ghost.y - 0.4f).toInt()
-                if (checkY >= 0 && map[checkY][currentGridX] == 1) canMove = false
+            if (ghost.dirY > 0 && targetGridY > currentGridY) {
+                if (targetGridY >= map.size || map[targetGridY][currentGridX] == 1) canMove = false
+            } else if (ghost.dirY < 0 && targetGridY < currentGridY) {
+                if (targetGridY < 0 || map[targetGridY][currentGridX] == 1) canMove = false
             }
         }
         
