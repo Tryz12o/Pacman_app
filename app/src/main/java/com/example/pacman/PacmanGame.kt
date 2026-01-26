@@ -50,22 +50,20 @@ enum class GhostType { CHASER, RANDOM, AMBUSH }
 
 enum class AppTheme { SYSTEM, LIGHT, DARK }
 
-// Game timing constants
-private const val GRID_UPDATE_INTERVAL_MS = 200L  // Game logic updates every 200ms
-private const val RENDER_FRAME_DELAY_MS = 16L     // ~60 FPS rendering
+// Game timing constants - 60 FPS physics
+private const val FRAME_DELAY_MS = 16L  // ~60 FPS
+private const val MOVEMENT_SPEED = 0.08f  // Grid cells per frame (1 cell per 200ms = 12.5 frames)
 
 data class Ghost(
-    var x: Int,
-    var y: Int,
+    var x: Float,
+    var y: Float,
     val color: Color,
     val type: GhostType,
-    val homeX: Int,
-    val homeY: Int,
-    var dirX: Int = 0,
-    var dirY: Int = 0,
-    var alive: Boolean = true,
-    var renderX: Float = 0f,
-    var renderY: Float = 0f
+    val homeX: Float,
+    val homeY: Float,
+    var dirX: Float = 0f,
+    var dirY: Float = 0f,
+    var alive: Boolean = true
 )
 
 private fun lerp(start: Color, stop: Color, fraction: Float): Color {
@@ -117,20 +115,18 @@ fun PacmanGame() {
     // Persistent layout for the random level
     val randomWallLayout = remember { mutableStateOf<List<Pair<Int, Int>>>(emptyList()) }
 
-    var pacX by remember { mutableIntStateOf(cols / 2) }
-    var pacY by remember { mutableIntStateOf(rows / 2) }
-    var pacRenderX by remember { mutableFloatStateOf(cols / 2f) }
-    var pacRenderY by remember { mutableFloatStateOf(rows / 2f) }
-    var dirX by remember { mutableIntStateOf(0) }
-    var dirY by remember { mutableIntStateOf(0) }
-    var nextDirX by remember { mutableIntStateOf(0) }
-    var nextDirY by remember { mutableIntStateOf(0) }
+    var pacX by remember { mutableFloatStateOf(cols / 2f) }
+    var pacY by remember { mutableFloatStateOf(rows / 2f) }
+    var dirX by remember { mutableFloatStateOf(0f) }
+    var dirY by remember { mutableFloatStateOf(0f) }
+    var nextDirX by remember { mutableFloatStateOf(0f) }
+    var nextDirY by remember { mutableFloatStateOf(0f) }
 
     val ghosts = remember {
         mutableStateListOf(
-            Ghost(1, 1, Color.Red, GhostType.CHASER, 1, 1, renderX = 1f, renderY = 1f),
-            Ghost(cols - 2, 1, Color.Cyan, GhostType.RANDOM, cols - 2, 1, renderX = (cols - 2).toFloat(), renderY = 1f),
-            Ghost(1, rows - 2, Color.Magenta, GhostType.AMBUSH, 1, rows - 2, renderX = 1f, renderY = (rows - 2).toFloat())
+            Ghost(1f, 1f, Color.Red, GhostType.CHASER, 1f, 1f),
+            Ghost(cols - 2f, 1f, Color.Cyan, GhostType.RANDOM, cols - 2f, 1f),
+            Ghost(1f, rows - 2f, Color.Magenta, GhostType.AMBUSH, 1f, rows - 2f)
         )
     }
 
@@ -273,17 +269,16 @@ fun PacmanGame() {
     fun fullReset(level: Int) {
         collectedDots = 0
         resetMap(level)
-        pacX = cols / 2; pacY = rows / 2
-        pacRenderX = (cols / 2).toFloat(); pacRenderY = (rows / 2).toFloat()
-        dirX = 0; dirY = 0
-        nextDirX = 0; nextDirY = 0
+        pacX = cols / 2f; pacY = rows / 2f
+        dirX = 0f; dirY = 0f
+        nextDirX = 0f; nextDirY = 0f
         pacPowerTimeLeft = 0L
         pacPowered = false
         ghosts.replaceAll {
             when (it.type) {
-                GhostType.CHASER -> Ghost(1, 1, it.color, it.type, 1, 1, renderX = 1f, renderY = 1f)
-                GhostType.RANDOM -> Ghost(cols - 2, 1, it.color, it.type, cols - 2, 1, renderX = (cols - 2).toFloat(), renderY = 1f)
-                GhostType.AMBUSH -> Ghost(1, rows - 2, it.color, it.type, 1, rows - 2, renderX = 1f, renderY = (rows - 2).toFloat())
+                GhostType.CHASER -> Ghost(1f, 1f, it.color, it.type, 1f, 1f)
+                GhostType.RANDOM -> Ghost(cols - 2f, 1f, it.color, it.type, cols - 2f, 1f)
+                GhostType.AMBUSH -> Ghost(1f, rows - 2f, it.color, it.type, 1f, rows - 2f)
             }
         }
         gameOver = false
@@ -302,11 +297,11 @@ fun PacmanGame() {
                     val threshold = 0.8f
 
                     if (abs(tiltX) > abs(tiltY)) {
-                        if (tiltX < -threshold) { nextDirX = 1; nextDirY = 0 }
-                        else if (tiltX > threshold) { nextDirX = -1; nextDirY = 0 }
+                        if (tiltX < -threshold) { nextDirX = 1f; nextDirY = 0f }
+                        else if (tiltX > threshold) { nextDirX = -1f; nextDirY = 0f }
                     } else {
-                        if (tiltY < -threshold) { nextDirY = -1; nextDirX = 0 }
-                        else if (tiltY > threshold) { nextDirY = 1; nextDirX = 0 }
+                        if (tiltY < -threshold) { nextDirY = -1f; nextDirX = 0f }
+                        else if (tiltY > threshold) { nextDirY = 1f; nextDirX = 0f }
                     }
                 }
                 override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -364,60 +359,64 @@ fun PacmanGame() {
 
     LaunchedEffect(Unit) {
         fullReset(selectedLevelIndex)
-        var lastGridUpdate = System.currentTimeMillis()
-        
         while (true) {
             if (!isPaused && !showLevelSelector) {
-                val currentTime = System.currentTimeMillis()
-                
-                // Grid-based logic updates (every 200ms)
-                if (currentTime - lastGridUpdate >= GRID_UPDATE_INTERVAL_MS) {
-                    lastGridUpdate = currentTime
-                    
-                    if (gameOver) {
-                        delay(1000)
-                        fullReset(selectedLevelIndex)
-                        continue
-                    }
+                if (gameOver) {
+                    delay(1000)
+                    fullReset(selectedLevelIndex)
+                }
 
-                    val tryNextX = pacX + nextDirX
-                    val tryNextY = pacY + nextDirY
-                    if (nextDirX != 0 || nextDirY != 0) {
-                        if (tryNextY in 0 until rows && tryNextX in 0 until cols && map[tryNextY][tryNextX] != 1) {
-                            dirX = nextDirX; dirY = nextDirY
-                            nextDirX = 0; nextDirY = 0
-                        }
+                // Try to change direction if requested
+                val tryNextX = pacX + nextDirX * MOVEMENT_SPEED
+                val tryNextY = pacY + nextDirY * MOVEMENT_SPEED
+                if (nextDirX != 0f || nextDirY != 0f) {
+                    val gridX = tryNextX.toInt()
+                    val gridY = tryNextY.toInt()
+                    if (gridY in 0 until rows && gridX in 0 until cols && map[gridY][gridX] != 1) {
+                        dirX = nextDirX; dirY = nextDirY
+                        nextDirX = 0f; nextDirY = 0f
                     }
+                }
 
-                    val nx = pacX + dirX
-                    val ny = pacY + dirY
-                    if (ny in 0 until rows && nx in 0 until cols && map[ny][nx] != 1) {
-                        pacX = nx; pacY = ny
-                    }
+                // Move Pacman
+                val nx = pacX + dirX * MOVEMENT_SPEED
+                val ny = pacY + dirY * MOVEMENT_SPEED
+                val gridNX = nx.toInt()
+                val gridNY = ny.toInt()
+                if (gridNY in 0 until rows && gridNX in 0 until cols && map[gridNY][gridNX] != 1) {
+                    pacX = nx; pacY = ny
+                }
 
-                    if (map[pacY][pacX] == 2) {
-                        map[pacY][pacX] = 0
-                        collectedDots++
-                    } else if (map[pacY][pacX] == 3) {
-                        map[pacY][pacX] = 0
-                        collectedDots++
-                        pacPowered = true
-                        pacPowerTimeLeft = 8000L
-                    }
+                // Check for dot/power-up collection at current grid position
+                val currentGridX = pacX.toInt()
+                val currentGridY = pacY.toInt()
+                if (map[currentGridY][currentGridX] == 2) {
+                    map[currentGridY][currentGridX] = 0
+                    collectedDots++
+                } else if (map[currentGridY][currentGridX] == 3) {
+                    map[currentGridY][currentGridX] = 0
+                    collectedDots++
+                    pacPowered = true
+                    pacPowerTimeLeft = 8000L
+                }
 
-                    ghosts.forEach { g ->
-                        if (g.alive) moveGhostGrid(map, g, pacX, pacY, dirX, dirY, ghosts)
-                    }
+                // Move ghosts
+                ghosts.forEach { g ->
+                    if (g.alive) moveGhostSmooth(map, g, pacX, pacY, dirX, dirY, ghosts)
+                }
 
-                    ghosts.forEach { g ->
-                        if (g.alive && g.x == pacX && g.y == pacY) {
+                // Check collision with ghosts
+                ghosts.forEach { g ->
+                    if (g.alive) {
+                        val dx = abs(g.x - pacX)
+                        val dy = abs(g.y - pacY)
+                        if (dx < 0.5f && dy < 0.5f) {  // Collision threshold
                             if (pacPowered) {
                                 g.alive = false
                                 launch {
                                     delay(3000)
                                     g.x = g.homeX; g.y = g.homeY
-                                    g.renderX = g.homeX.toFloat(); g.renderY = g.homeY.toFloat()
-                                    g.dirX = 0; g.dirY = 0; g.alive = true
+                                    g.dirX = 0f; g.dirY = 0f; g.alive = true
                                 }
                             } else {
                                 gameOver = true
@@ -425,24 +424,8 @@ fun PacmanGame() {
                         }
                     }
                 }
-                
-                // Smooth interpolation (60 FPS) - only when game is active
-                val timeSinceLastUpdate = (currentTime - lastGridUpdate).coerceAtMost(GRID_UPDATE_INTERVAL_MS)
-                val interpolationFactor = (timeSinceLastUpdate.toFloat() / GRID_UPDATE_INTERVAL_MS).coerceIn(0f, 1f)
-                
-                // Interpolate Pacman position
-                pacRenderX = pacX - dirX * (1f - interpolationFactor)
-                pacRenderY = pacY - dirY * (1f - interpolationFactor)
-                
-                // Interpolate ghost positions
-                ghosts.forEach { g ->
-                    if (g.alive) {
-                        g.renderX = g.x - g.dirX * (1f - interpolationFactor)
-                        g.renderY = g.y - g.dirY * (1f - interpolationFactor)
-                    }
-                }
             }
-            delay(RENDER_FRAME_DELAY_MS)
+            delay(FRAME_DELAY_MS)
         }
     }
 
@@ -475,7 +458,7 @@ fun PacmanGame() {
                         val offsetY = (size.height - tileSize * rows) / 2f
 
                         drawMazeGrid(map, tileSize, offsetX, offsetY, wallColor, dotColor)
-                        drawPacmanClassic(pacRenderX, pacRenderY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
+                        drawPacmanClassic(pacX, pacY, tileSize, offsetX, offsetY, mouthOpen, Color.Yellow)
                         ghosts.forEach {
                             if (it.alive) drawGhostClassic(it, tileSize, offsetX, offsetY, dotColor)
                         }
@@ -626,41 +609,72 @@ fun PacmanGame() {
             }
         } else if (!useGyroscope) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row { Button(onClick = { nextDirY = -1; nextDirX = 0 }) { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up") } }
+                Row { Button(onClick = { nextDirY = -1f; nextDirX = 0f }) { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up") } }
                 Row {
-                    Button(onClick = { nextDirX = -1; nextDirY = 0 }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left") }
+                    Button(onClick = { nextDirX = -1f; nextDirY = 0f }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Left") }
                     Spacer(modifier = Modifier.width(64.dp))
-                    Button(onClick = { nextDirX = 1; nextDirY = 0 }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right") }
+                    Button(onClick = { nextDirX = 1f; nextDirY = 0f }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Right") }
                 }
-                Row { Button(onClick = { nextDirY = 1; nextDirX = 0 }) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Down") } }
+                Row { Button(onClick = { nextDirY = 1f; nextDirX = 0f }) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Down") } }
             }
         }
     }
 }
 
-private fun moveGhostGrid(map: Array<IntArray>, ghost: Ghost, pacX: Int, pacY: Int, pacDirX: Int, pacDirY: Int, ghosts: List<Ghost>) {
-    val dirs = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
-    var possible = dirs.filter { (dx, dy) ->
-        val nx = ghost.x + dx
-        val ny = ghost.y + dy
-        nx in map[0].indices && ny in map.indices && map[ny][nx] != 1 && ghosts.none { it != ghost && it.alive && it.x == nx && it.y == ny }
+private fun moveGhostSmooth(map: Array<IntArray>, ghost: Ghost, pacX: Float, pacY: Float, pacDirX: Float, pacDirY: Float, ghosts: List<Ghost>) {
+    // Only change direction when at grid center (for cleaner pathfinding)
+    val atGridCenter = abs(ghost.x - ghost.x.toInt() - 0.5f) < 0.1f && abs(ghost.y - ghost.y.toInt() - 0.5f) < 0.1f
+    
+    if (atGridCenter || (ghost.dirX == 0f && ghost.dirY == 0f)) {
+        val dirs = listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)
+        var possible = dirs.filter { (dx, dy) ->
+            val nx = (ghost.x + dx).toInt()
+            val ny = (ghost.y + dy).toInt()
+            nx in map[0].indices && ny in map.indices && map[ny][nx] != 1
+        }
+        if (possible.size > 1) possible = possible.filterNot { (dx, dy) -> dx == -ghost.dirX && dy == -ghost.dirY }
+        if (possible.isEmpty()) return
+        
+        val best = when (ghost.type) {
+            GhostType.CHASER -> possible.minByOrNull { (dx, dy) -> 
+                val nx = ghost.x + dx; val ny = ghost.y + dy
+                (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
+            }
+            GhostType.AMBUSH -> {
+                val tx = pacX + pacDirX * 4
+                val ty = pacY + pacDirY * 4
+                possible.minByOrNull { (dx, dy) -> 
+                    val nx = ghost.x + dx; val ny = ghost.y + dy
+                    (tx - nx) * (tx - nx) + (ty - ny) * (ty - ny)
+                }
+            }
+            GhostType.RANDOM -> {
+                val d = abs(ghost.x - pacX) + abs(ghost.y - pacY)
+                if (d > 8) possible.minByOrNull { (dx, dy) -> 
+                    val nx = ghost.x + dx; val ny = ghost.y + dy
+                    (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny)
+                } else { 
+                    val cx = 1f; val cy = map.lastIndex - 1f
+                    possible.minByOrNull { (dx, dy) -> 
+                        val nx = ghost.x + dx; val ny = ghost.y + dy
+                        (cx - nx) * (cx - nx) + (cy - ny) * (cy - ny)
+                    }
+                }
+            }
+        } ?: possible.random()
+        ghost.dirX = best.first
+        ghost.dirY = best.second
     }
-    if (possible.size > 1) possible = possible.filterNot { (dx, dy) -> dx == -ghost.dirX && dy == -ghost.dirY }
-    if (possible.isEmpty()) return
-    val best = when (ghost.type) {
-        GhostType.CHASER -> possible.minByOrNull { (dx, dy) -> val nx = ghost.x + dx; val ny = ghost.y + dy; (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny) }
-        GhostType.AMBUSH -> {
-            val tx = (pacX + pacDirX * 4).coerceIn(0, map[0].lastIndex)
-            val ty = (pacY + pacDirY * 4).coerceIn(0, map.lastIndex)
-            possible.minByOrNull { (dx, dy) -> val nx = ghost.x + dx; val ny = ghost.y + dy; (tx - nx) * (tx - nx) + (ty - ny) * (ty - ny) }
-        }
-        GhostType.RANDOM -> {
-            val d = abs(ghost.x - pacX) + abs(ghost.y - pacY)
-            if (d > 8) possible.minByOrNull { (dx, dy) -> val nx = ghost.x + dx; val ny = ghost.y + dy; (pacX - nx) * (pacX - nx) + (pacY - ny) * (pacY - ny) }
-            else { val cx = 1; val cy = map.lastIndex - 1; possible.minByOrNull { (dx, dy) -> val nx = ghost.x + dx; val ny = ghost.y + dy; (cx - nx) * (cx - nx) + (cy - ny) * (cy - ny) } }
-        }
-    } ?: possible.random()
-    ghost.x += best.first; ghost.y += best.second; ghost.dirX = best.first; ghost.dirY = best.second
+    
+    // Move smoothly in current direction
+    val nx = ghost.x + ghost.dirX * MOVEMENT_SPEED
+    val ny = ghost.y + ghost.dirY * MOVEMENT_SPEED
+    val gridNX = nx.toInt()
+    val gridNY = ny.toInt()
+    if (gridNY in map.indices && gridNX in map[0].indices && map[gridNY][gridNX] != 1) {
+        ghost.x = nx
+        ghost.y = ny
+    }
 }
 
 private fun DrawScope.drawMazeGrid(map: Array<IntArray>, tile: Float, ox: Float, oy: Float, wall: Color, dot: Color) {
@@ -705,7 +719,7 @@ private fun DrawScope.drawPacmanClassic(x: Float, y: Float, tile: Float, ox: Flo
 }
 
 private fun DrawScope.drawGhostClassic(g: Ghost, tile: Float, ox: Float, oy: Float, eye: Color) {
-    val cx = ox + (g.renderX + 0.5f) * tile; val cy = oy + (g.renderY + 0.5f) * tile; val r = tile * 0.4f
+    val cx = ox + (g.x + 0.5f) * tile; val cy = oy + (g.y + 0.5f) * tile; val r = tile * 0.4f
     drawCircle(g.color, r, Offset(cx, cy - r / 4))
     for (i in 0..3) { val lx = cx - r + i * r * 0.66f; drawCircle(g.color, r / 4, Offset(lx, cy)) }
     drawCircle(eye, r / 5, Offset(cx - r / 4, cy - r / 4)); drawCircle(eye, r / 5, Offset(cx + r / 4, cy - r / 4))
